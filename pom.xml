@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>io.github.uskoag</groupId>
+    <artifactId>uskoag-gservices-parent</artifactId>
+    <version>1.0</version>
+    <packaging>pom</packaging>
+
+    <description>Parent POM for Google Services (OAuth, Sheets, Docs, Drive, Slides) with centralized dependency management</description>
+
+    <modules>
+        <module>uskoag-gservices-oauth</module>
+        <module>uskoag-gservices-sheets</module>
+        <module>uskoag-gservices-drive</module>
+        <module>uskoag-gservices-docs</module>
+        <module>uskoag-gservices-slides</module>
+        <module>uskoag-gservices-spreadsheet_cli</module>
+    </modules>
+
+    <properties>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+        <!-- Google API versions -->
+        <google.api.client.ver>2.2.0</google.api.client.ver>
+        <google.oauth.client.jetty.ver>1.34.1</google.oauth.client.jetty.ver>
+        <google.sheets.ver>v4-rev20240826-2.0.0</google.sheets.ver>
+        <google.drive.ver>v3-rev20240914-2.0.0</google.drive.ver>
+        <google.docs.ver>v1-rev20251110-2.0.0</google.docs.ver>
+        <google.slides.ver>v1-rev20250401-2.0.0</google.slides.ver>
+    </properties>
+
+</project>
