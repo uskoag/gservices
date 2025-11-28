@@ -13,6 +13,7 @@ This is a multi-module Maven project with the following artifacts:
 | **uskoag-gservices-drive** | Google Drive API service | `io.github.uskoag:uskoag-gservices-drive:1.0` |
 | **uskoag-gservices-docs** | Google Docs API service | `io.github.uskoag:uskoag-gservices-docs:1.0` |
 | **uskoag-gservices-slides** | Google Slides API service | `io.github.uskoag:uskoag-gservices-slides:1.0` |
+| **uskoag-gservices-youtube** | YouTube Data API v3 service | `io.github.uskoag:uskoag-gservices-youtube:1.0` |
 
 ## Requirements
 
@@ -92,6 +93,74 @@ var oauthToken = oauthToken("App-name", "app-key",
 
 var slides = SlidesService.slides(oauthToken);
 ```
+
+### Example: YouTube Data API
+
+```java
+import uskoag.gservices.YouTubeService;
+
+// Read-only access (search, view statistics, etc.)
+var oauthToken = oauthToken("My-YouTube-App", "youtube-readonly-key",
+        "https://www.googleapis.com/auth/youtube.readonly"
+).credential("user@gmail.com");
+
+var youtube = YouTubeService.youtube(oauthToken);
+
+// Search for videos
+var searchRequest = youtube.search().list(List.of("snippet"));
+searchRequest.setQ("Java programming");
+searchRequest.setType(List.of("video"));
+var results = searchRequest.execute();
+```
+
+#### YouTube Live Chat Example
+
+```java
+// Full access for live chat (requires streamer/moderator)
+var liveChatToken = oauthToken("LiveChat-Bot", "livechat-key",
+        "https://www.googleapis.com/auth/youtube.force-ssl"
+).credential("streamer@gmail.com");
+
+var youtube = YouTubeService.youtube(liveChatToken);
+
+// Get active live broadcast
+var broadcasts = youtube.liveBroadcasts()
+        .list(List.of("snippet"))
+        .setBroadcastStatus("active")
+        .setMine(true)
+        .execute();
+
+String liveChatId = broadcasts.getItems().get(0).getSnippet().getLiveChatId();
+
+// Read chat messages
+var messages = youtube.liveChatMessages()
+        .list(liveChatId, List.of("snippet", "authorDetails"))
+        .execute();
+
+for (var msg : messages.getItems()) {
+    System.out.println(msg.getAuthorDetails().getDisplayName() + ": "
+            + msg.getSnippet().getDisplayMessage());
+}
+```
+
+**Available YouTube OAuth Scopes:**
+- `https://www.googleapis.com/auth/youtube` - Full access to account
+- `https://www.googleapis.com/auth/youtube.readonly` - Read-only access
+- `https://www.googleapis.com/auth/youtube.force-ssl` - Full access with SSL enforcement
+- `https://www.googleapis.com/auth/youtube.upload` - Upload videos only
+- `https://www.googleapis.com/auth/youtubepartner` - YouTube Partner access
+- `https://www.googleapis.com/auth/youtube.channel-memberships.creator` - Channel memberships
+
+**YouTube API Capabilities:**
+- **Videos:** Upload, update, delete, search, get statistics
+- **Live Streaming:** Read/write live chat, manage broadcasts, moderate chat
+- **Channels:** Get channel info, manage subscriptions, channel sections
+- **Playlists:** Create, update, delete playlists and playlist items
+- **Comments:** Read, post, moderate comments and comment threads
+- **Captions:** Upload, download, manage video subtitles
+- **Search:** Query videos, channels, playlists with filters
+
+See `uskoag-gservices-youtube/src/test/java/examples/YouTubeExamples.java` for comprehensive usage examples.
 
 ## OAuth Credentials Setup
 
