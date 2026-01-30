@@ -15,7 +15,7 @@ A command-line interface for reading and writing Google Sheets, built for testin
 
 The CLI is already installed if you have:
 1. Built the project: `mvn clean package`
-2. The batch file at: `F:\Sharabheshwara\Applications\cmdtools\uskoag-sheetcli.bat`
+2. The batch file at: `d:\userSharabheshwara\Applications\cmdtools\uskoag-sheetcli.bat`
 
 ## Quick Start
 
@@ -217,7 +217,7 @@ uskoag-sheetcli read UNAUTHORIZED_SHEET_ID Sheet1 A1
 ### Build issues
 ```batch
 REM Clean and rebuild
-cd F:\Sharabheshwara\code\uskoag\uskoag-gservices
+cd d:\userSharabheshwara\code\uskoag\uskoag-gservices
 mvn clean package -pl uskoag-gservices-spreadsheet_cli -am
 ```
 

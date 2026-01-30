@@ -19,6 +19,7 @@
         <module>uskoag-gservices-docs</module>
         <module>uskoag-gservices-slides</module>
         <module>uskoag-gservices-youtube</module>
+        <module>uskoag-gservices-gmail</module>
         <module>uskoag-gservices-spreadsheet_cli</module>
     </modules>
 
@@ -35,6 +36,7 @@
         <google.docs.ver>v1-rev20251110-2.0.0</google.docs.ver>
         <google.slides.ver>v1-rev20250401-2.0.0</google.slides.ver>
         <google.youtube.ver>v3-rev20250714-2.0.0</google.youtube.ver>
+        <google.gmail.ver>v1-rev20251201-2.0.0</google.gmail.ver>
     </properties>
 
 </project>
