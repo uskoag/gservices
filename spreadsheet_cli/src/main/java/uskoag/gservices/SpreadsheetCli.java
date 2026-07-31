@@ -71,9 +71,7 @@ import java.util.stream.Stream;
  *                                 [--colors #h1,#h2,... [--color-legend]]
  *   highlight <id> <sheet> <range> (--from-range Ref | --list a,b,c | --colors-from-range Ref) [--colors #h1,#h2,...] [--clear]
  *   filter  <id> <sheet> [<range>] [--clear]
- *   grant   --read|--write <id> [name]
- *   revoke  <id>
- *   listperms
+ *   grant | revoke | listperms   moved to the wallet; these print the replacement command
  *
  * Value input option (write/append):
  *   Default is RAW (data stored literally).  Use --user-entered to enable formula parsing.
@@ -98,13 +96,11 @@ public class SpreadsheetCli {
     private static final String LEGACY_APP_KEY_HINT = "uskoag-spreadsheet-cli";
 
     private static final Path CONFIG_DIR = Paths.get(System.getProperty("user.home"), "uskoag", "gservices", "spreadsheet_cli");
-    private static final Path CONFIG_FILE = CONFIG_DIR.resolve("SpreadsheetCli.xml");
     // disableHtmlEscaping: formulas/notes routinely contain equals/angle-bracket/ampersand chars —
     // Gson's default HTML-safe mode would otherwise unicode-escape them in JSON output.
     private static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
 
     private static Sheets sheetsService;
-    private static CliConfig config;
     private static boolean verbose = false;
     private static boolean quiet = false;
     private static boolean walletBrokered = false;
@@ -145,12 +141,10 @@ public class SpreadsheetCli {
             }
 
             if (command.equals("listperms")) {
-                initializeConfig();
                 handleListPerms();
                 return;
             }
 
-            initializeConfig();
             initializeSheetsService();
 
             switch (command) {
@@ -301,11 +295,6 @@ public class SpreadsheetCli {
     // ─── read ────────────────────────────────────────────────────────────────
 
     private static void handleRead(String spreadsheetId, List<String> argList) throws IOException {
-        if (!hasPermission(spreadsheetId, "read")) {
-            logError("PERMISSION DENIED: No read permission for: " + spreadsheetId);
-            System.exit(1);
-        }
-
         String format = extractFlagValue(argList, "--format");
         if (format == null) format = "kv";
 
@@ -613,11 +602,6 @@ public class SpreadsheetCli {
      * Colors are reported as merged rectangles, not per cell.
      */
     private static void handleInspect(String spreadsheetId, List<String> argList) throws IOException {
-        if (!hasPermission(spreadsheetId, "read")) {
-            logError("PERMISSION DENIED: No read permission for: " + spreadsheetId);
-            System.exit(1);
-        }
-
         String format = extractFlagValue(argList, "--format");
         if (format == null) format = "text";
         boolean notesOnly  = removeFlag(argList, "--notes-only");
@@ -782,11 +766,6 @@ public class SpreadsheetCli {
      * the source sheet row number. Cells are text — CAST for numeric/date compares.
      */
     private static void handleQuery(String spreadsheetId, List<String> argList) throws IOException {
-        if (!hasPermission(spreadsheetId, "read")) {
-            logError("PERMISSION DENIED: No read permission for: " + spreadsheetId);
-            System.exit(1);
-        }
-
         String format = extractFlagValue(argList, "--format");
         if (format == null) format = "json";
         String range = extractFlagValue(argList, "--range");
@@ -823,11 +802,6 @@ public class SpreadsheetCli {
      * can verify and self-heal). --dry-run computes the diff but writes nothing.
      */
     private static void handleUpdate(String spreadsheetId, List<String> argList) throws IOException {
-        if (!hasPermission(spreadsheetId, "write")) {
-            logError("PERMISSION DENIED: No write permission for: " + spreadsheetId);
-            System.exit(1);
-        }
-
         boolean dryRun      = removeFlag(argList, "--dry-run");
         boolean userEntered = removeFlag(argList, "--user-entered");
         removeFlag(argList, "--raw"); // RAW is the default; explicit --raw is a no-op
@@ -914,11 +888,6 @@ public class SpreadsheetCli {
     // ─── write ───────────────────────────────────────────────────────────────
 
     private static void handleWrite(String spreadsheetId, List<String> argList) throws IOException {
-        if (!hasPermission(spreadsheetId, "write")) {
-            logError("PERMISSION DENIED: No write permission for: " + spreadsheetId);
-            System.exit(1);
-        }
-
         boolean userEntered = removeFlag(argList, "--user-entered");
         removeFlag(argList, "--raw"); // explicit --raw is no-op; RAW is the default
         boolean asDate = removeFlag(argList, "--as-date");
@@ -1042,11 +1011,6 @@ public class SpreadsheetCli {
     // ─── append ──────────────────────────────────────────────────────────────
 
     private static void handleAppend(String spreadsheetId, List<String> argList) throws IOException {
-        if (!hasPermission(spreadsheetId, "write")) {
-            logError("PERMISSION DENIED: No write permission for: " + spreadsheetId);
-            System.exit(1);
-        }
-
         boolean userEntered = removeFlag(argList, "--user-entered");
         removeFlag(argList, "--raw");
         boolean asDate = removeFlag(argList, "--as-date");
@@ -1130,11 +1094,6 @@ public class SpreadsheetCli {
     // ─── clear ───────────────────────────────────────────────────────────────
 
     private static void handleClear(String spreadsheetId, String sheetName, String address) throws IOException {
-        if (!hasPermission(spreadsheetId, "write")) {
-            logError("PERMISSION DENIED: No write permission for: " + spreadsheetId);
-            System.exit(1);
-        }
-
         logInfo("Clearing: " + sheetName + "!" + address);
 
         sheetsService.spreadsheets().values()
@@ -1149,11 +1108,6 @@ public class SpreadsheetCli {
     // ─── listsheet / createsheet / renamesheet ────────────────────────────────
 
     private static void handleListSheets(String spreadsheetId) throws IOException {
-        if (!hasPermission(spreadsheetId, "read")) {
-            logError("PERMISSION DENIED: No read permission for: " + spreadsheetId);
-            System.exit(1);
-        }
-
         logInfo("Listing sheets: " + spreadsheetId);
 
         Spreadsheet spreadsheet = sheetsService.spreadsheets().get(spreadsheetId).execute();
@@ -1166,11 +1120,6 @@ public class SpreadsheetCli {
     }
 
     private static void handleCreateSheet(String spreadsheetId, String sheetName) throws IOException {
-        if (!hasPermission(spreadsheetId, "write")) {
-            logError("PERMISSION DENIED: No write permission for: " + spreadsheetId);
-            System.exit(1);
-        }
-
         logInfo("Creating sheet: " + sheetName);
 
         BatchUpdateSpreadsheetRequest req = new BatchUpdateSpreadsheetRequest().setRequests(
@@ -1182,11 +1131,6 @@ public class SpreadsheetCli {
     }
 
     private static void handleRenameSheet(String spreadsheetId, String oldName, String newName) throws IOException {
-        if (!hasPermission(spreadsheetId, "write")) {
-            logError("PERMISSION DENIED: No write permission for: " + spreadsheetId);
-            System.exit(1);
-        }
-
         logInfo("Renaming: '" + oldName + "' → '" + newName + "'");
 
         Spreadsheet spreadsheet = sheetsService.spreadsheets().get(spreadsheetId).execute();
@@ -1214,11 +1158,6 @@ public class SpreadsheetCli {
     // ─── freeze / format / validate ──────────────────────────────────────────
 
     private static void handleFreeze(String spreadsheetId, String sheetName, List<String> argList) throws IOException {
-        if (!hasPermission(spreadsheetId, "write")) {
-            logError("PERMISSION DENIED: No write permission for: " + spreadsheetId);
-            System.exit(1);
-        }
-
         String rowsStr = extractFlagValue(argList, "--rows");
         String colsStr = extractFlagValue(argList, "--cols");
         if (rowsStr == null && colsStr == null) {
@@ -1253,11 +1192,6 @@ public class SpreadsheetCli {
     }
 
     private static void handleInsertColumn(String spreadsheetId, String sheetName, String colLetter, List<String> argList) throws IOException {
-        if (!hasPermission(spreadsheetId, "write")) {
-            logError("PERMISSION DENIED: No write permission for: " + spreadsheetId);
-            System.exit(1);
-        }
-
         String countStr = extractFlagValue(argList, "--count");
         int count = countStr != null ? Integer.parseInt(countStr) : 1;
 
@@ -1302,11 +1236,6 @@ public class SpreadsheetCli {
     }
 
     private static void handleDeleteColumn(String spreadsheetId, String sheetName, String colLetter, List<String> argList) throws IOException {
-        if (!hasPermission(spreadsheetId, "write")) {
-            logError("PERMISSION DENIED: No write permission for: " + spreadsheetId);
-            System.exit(1);
-        }
-
         String countStr = extractFlagValue(argList, "--count");
         int count = countStr != null ? Integer.parseInt(countStr) : 1;
 
@@ -1337,11 +1266,6 @@ public class SpreadsheetCli {
     }
 
     private static void handleInsertRow(String spreadsheetId, String sheetName, String rowNumStr, List<String> argList) throws IOException {
-        if (!hasPermission(spreadsheetId, "write")) {
-            logError("PERMISSION DENIED: No write permission for: " + spreadsheetId);
-            System.exit(1);
-        }
-
         String countStr = extractFlagValue(argList, "--count");
         int count = countStr != null ? Integer.parseInt(countStr) : 1;
 
@@ -1381,11 +1305,6 @@ public class SpreadsheetCli {
     }
 
     private static void handleFormat(String spreadsheetId, String sheetName, String range, List<String> argList) throws IOException {
-        if (!hasPermission(spreadsheetId, "write")) {
-            logError("PERMISSION DENIED: No write permission for: " + spreadsheetId);
-            System.exit(1);
-        }
-
         String bg = extractFlagValue(argList, "--bg");
         String text = extractFlagValue(argList, "--text");
         Boolean bold = removeFlag(argList, "--bold") ? Boolean.TRUE : null;
@@ -1422,11 +1341,6 @@ public class SpreadsheetCli {
     }
 
     private static void handleNumberFormat(String spreadsheetId, String sheetName, String range, List<String> argList) throws IOException {
-        if (!hasPermission(spreadsheetId, "write")) {
-            logError("PERMISSION DENIED: No write permission for: " + spreadsheetId);
-            System.exit(1);
-        }
-
         boolean clear = removeFlag(argList, "--clear");
         String type = extractFlagValue(argList, "--type");
         String pattern = extractFlagValue(argList, "--pattern");
@@ -1474,11 +1388,6 @@ public class SpreadsheetCli {
      * set changes (re-run it; highlight refreshes rather than stacking duplicates).
      */
     private static void handleValidate(String spreadsheetId, String sheetName, String range, List<String> argList) throws IOException {
-        if (!hasPermission(spreadsheetId, "write")) {
-            logError("PERMISSION DENIED: No write permission for: " + spreadsheetId);
-            System.exit(1);
-        }
-
         boolean clear = removeFlag(argList, "--clear");
         String fromRange = extractFlagValue(argList, "--from-range");
         String list = extractFlagValue(argList, "--list");
@@ -1582,11 +1491,6 @@ public class SpreadsheetCli {
      * set (e.g. a new enum value) is just "run it again" — no manual cleanup needed.
      */
     private static void handleHighlight(String spreadsheetId, String sheetName, String range, List<String> argList) throws IOException {
-        if (!hasPermission(spreadsheetId, "write")) {
-            logError("PERMISSION DENIED: No write permission for: " + spreadsheetId);
-            System.exit(1);
-        }
-
         boolean clear = removeFlag(argList, "--clear");
         String fromRange = extractFlagValue(argList, "--from-range");
         String list = extractFlagValue(argList, "--list");
@@ -1732,11 +1636,6 @@ public class SpreadsheetCli {
      * row 1). A sheet has exactly one basic filter, so re-running just replaces it.
      */
     private static void handleFilter(String spreadsheetId, String sheetName, List<String> argList) throws IOException {
-        if (!hasPermission(spreadsheetId, "write")) {
-            logError("PERMISSION DENIED: No write permission for: " + spreadsheetId);
-            System.exit(1);
-        }
-
         boolean clear = removeFlag(argList, "--clear");
         String range = argList.isEmpty() ? null : argList.remove(0);
 
@@ -1774,11 +1673,6 @@ public class SpreadsheetCli {
      * export sees varied real data rather than the first N rows. 3 API calls regardless of sheet count.
      */
     private static void handleDescribeSchema(String spreadsheetId, List<String> argList) throws IOException {
-        if (!hasPermission(spreadsheetId, "read")) {
-            logError("PERMISSION DENIED: No read permission for: " + spreadsheetId);
-            System.exit(1);
-        }
-
         String sheetsArg = extractFlagValue(argList, "--sheets");
         String sampleRowsStr = extractFlagValue(argList, "--sample-rows");
         String sampleSizeStr = extractFlagValue(argList, "--sample-size");
@@ -1900,40 +1794,38 @@ public class SpreadsheetCli {
 
     // ─── grant / revoke / listperms ──────────────────────────────────────────
 
-    private static void handleGrant(List<String> argList) throws IOException {
-        boolean readOnly    = removeFlag(argList, "--read");
-        boolean writeAccess = removeFlag(argList, "--write");
-        if (!readOnly && !writeAccess) {
-            logError("grant: must specify --read or --write");
-            System.exit(1);
-        }
-        if (argList.isEmpty()) {
-            logError("grant: requires <spreadsheetId>");
-            System.exit(1);
-        }
-        String id   = argList.remove(0);
-        String name = argList.isEmpty() ? "" : argList.remove(0);
-
-        config.addPermission(id, name, true, writeAccess);
-        config.saveConfig();
-
-        String level = writeAccess ? "write (+ read)" : "read-only";
-        System.out.println("SUCCESS: Granted " + level + " for " + id + (name.isEmpty() ? "" : " (" + name + ")"));
+    /**
+     * These three used to edit this tool's own {@code SpreadsheetCli.xml}. They now redirect, rather than
+     * being deleted outright: a verb that vanishes gives a script an unrecognised-command error, while one
+     * that prints the replacement command turns the same failure into an instruction.
+     *
+     * <p>They are not proxied through to the wallet either. Granting has to be a decision made at the
+     * wallet, in a dialog naming the document, and a tool that could obtain a permission by asking on its
+     * own behalf is the thing the whole arrangement exists to prevent.
+     */
+    private static void handleGrant(List<String> argList) {
+        var id = argList.isEmpty() ? "<spreadsheetId>" : argList.getFirst();
+        var write = argList.contains("--write");
+        redirect("grant", "uskoag-walletcli policy allow --api sheets --resource " + id
+                + " --tier " + (write ? "mutate" : "read") + " --account " + (email == null ? "<email>" : email));
     }
 
-    private static void handleRevoke(String spreadsheetId) throws IOException {
-        config.removePermission(spreadsheetId);
-        config.saveConfig();
-        System.out.println("SUCCESS: Revoked permissions for " + spreadsheetId);
+    private static void handleRevoke(String spreadsheetId) {
+        redirect("revoke", "uskoag-walletcli policy list        (find the rule id, then)\n"
+                + "  uskoag-walletcli policy revoke <ruleId>");
     }
 
     private static void handleListPerms() {
-        List<String> lines = config.describePermissions();
-        if (lines.isEmpty()) {
-            System.out.println("(no permissions configured)");
-        } else {
-            lines.forEach(System.out::println);
-        }
+        redirect("listperms", "uskoag-walletcli policy list");
+    }
+
+    private static void redirect(String verb, String instead) {
+        logError(verb + " has moved to the wallet, which is now the only thing that decides what this tool"
+                + " may touch — for every tool, with expiry and an audit, instead of one XML file per tool.");
+        logError("Run instead:");
+        logError("  " + instead);
+        logError("Permissions are also created just by using a document: the first touch asks once.");
+        System.exit(2);
     }
 
     // ─── data loading helpers ────────────────────────────────────────────────
@@ -2046,11 +1938,6 @@ public class SpreadsheetCli {
 
     // ─── initialization ──────────────────────────────────────────────────────
 
-    private static void initializeConfig() throws IOException {
-        config = new CliConfig(CONFIG_FILE, verbose);
-        logInfo("Config loaded from: " + CONFIG_FILE);
-    }
-
     private static void initializeSheetsService() throws IOException, GeneralSecurityException {
         logInfo("Initializing Google Sheets service...");
         var spec = AccessSpec.of("sheets", PROFILE, APP_NAME, email,
@@ -2061,19 +1948,13 @@ public class SpreadsheetCli {
         sheetsService = SheetsService.sheets(access, APP_NAME);
         logInfo("Sheets service initialized via " + access.sourceName()
                 + (access.account() == null ? "" : " for " + access.account()));
-    }
-
-    /**
-     * Permission now has one home, not two.
-     *
-     * <p>The per-spreadsheet allow-list in {@code SpreadsheetCli.xml} was this tool's own half of a
-     * policy engine, and every other tool grew a different half. When a wallet is brokering, it decides
-     * — for every tool, with expiry, budgets and an audit — and this check stands down rather than
-     * second-guessing it. Two enforcement points that can disagree are worse than either alone.
-     */
-    private static boolean hasPermission(String spreadsheetId, String operation) {
-        if (walletBrokered) return true;
-        return config.hasPermission(spreadsheetId, operation);
+        if (!walletBrokered) {
+            // Said out loud, every time, because it is a real reduction and a silent one would be worse.
+            // The old XML allow-list is gone, so on this route there is nothing narrowing the account:
+            // whatever the token can reach, this tool can reach.
+            logError("NOTE: no wallet is brokering, so there is no per-document permission on this route."
+                    + " Start uskoag-wallet to get the approved list, expiry and the audit back.");
+        }
     }
 
     // ─── arg parsing helpers ─────────────────────────────────────────────────
@@ -2136,9 +2017,7 @@ public class SpreadsheetCli {
         out.println("  highlight <id> <sheet> <range>                Color-code each allowed value (conditional format, one rule per value)");
         out.println("  filter  <id> <sheet> [<range>]                Turn on the filter funnel buttons (--clear to remove; range optional -> whole sheet)");
         out.println("  describeschema <id>                           Export a rich per-sheet schema (headers, notes, diversified data samples)");
-        out.println("  grant   --read|--write <id> [name]            Add a spreadsheet to the local allowlist");
-        out.println("  revoke  <id>                                  Remove it from the allowlist");
-        out.println("  listperms                                     Show the allowlist (no Google auth needed)");
+        out.println("  grant | revoke | listperms                    MOVED - see PERMISSIONS below");
         out.println("  help                                          Show this help");
         out.println();
         out.println("GLOBAL OPTIONS");
@@ -2364,18 +2243,29 @@ public class SpreadsheetCli {
         out.println("  uskoag-sheetcli describeschema ID                            # every sheet, default sampling");
         out.println("  uskoag-sheetcli describeschema ID --sheets Contacts --sample-size 8 --format md");
         out.println("  uskoag-sheetcli describeschema ID --sheets Contacts --header-row 2 --col-end BQ");
-        out.println("  uskoag-sheetcli grant --write ID \"My Sheet\"");
         out.println();
         out.println("OUTPUT CONTRACT");
         out.println("  stdout = command data only (values / sheet list / a single SUCCESS: line).");
         out.println("  stderr = [ERROR] always, [INFO] only with -v. No JVM/AOT noise on warm runs.");
         out.println();
-        out.println("PERMISSIONS / CONFIG");
-        out.println("  A spreadsheet must be on the allowlist before use (grant / listperms / revoke).");
-        out.println("  File: %USERPROFILE%\\uskoag\\gservices\\spreadsheet_cli\\SpreadsheetCli.xml");
-        out.println("    <SpreadsheetCli><permissions>");
-        out.println("      <allowWrite name=\"My Sheet\">SPREADSHEET_ID</allowWrite>");
-        out.println("      <allowRead  name=\"Readonly\">ANOTHER_ID</allowRead>");
-        out.println("    </permissions></SpreadsheetCli>");
+        out.println("PERMISSIONS");
+        out.println("  The wallet decides, and it is the only thing that does. The per-spreadsheet XML");
+        out.println("  allowlist this tool used to keep is gone: every tool grew its own half of a policy");
+        out.println("  engine, and two that can disagree are worse than either.");
+        out.println();
+        out.println("  Nothing to set up. The first time a document is touched the wallet asks once,");
+        out.println("  naming it, and remembers the answer until it expires - a week to read, a day to");
+        out.println("  change, an hour for anything irreversible. Extending is one click.");
+        out.println();
+        out.println("    uskoag-walletcli policy list                     what stands right now");
+        out.println("    uskoag-walletcli policy extend <ruleId> --by 1w  push one out");
+        out.println("    uskoag-walletcli policy revoke <ruleId>          drop one");
+        out.println("    uskoag-walletcli audit                          what was actually attempted");
+        out.println();
+        out.println("  --email is required whenever the wallet holds more than one account. It refuses");
+        out.println("  rather than guessing, because acting as the wrong account is worse than failing.");
+        out.println();
+        out.println("  With no wallet running this falls back to the app-key route, which has NO");
+        out.println("  per-document restriction at all: whatever the token can reach, this tool can.");
     }
 }
