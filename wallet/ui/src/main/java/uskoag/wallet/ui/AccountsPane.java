@@ -6,7 +6,6 @@ import javafx.scene.control.ChoiceBox;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.scene.control.TreeItem;
-import javafx.scene.control.TreeView;
 import uskoag.wallet.daemon.AccountVerbs;
 import uskoag.wallet.daemon.TokenVerbs;
 import uskoag.wallet.daemon.WalletCore;
@@ -39,9 +38,7 @@ public final class AccountsPane {
         var accounts = new AccountVerbs(core);
         var tokens = new TokenVerbs(core);
 
-        var tree = new TreeView<Row>();
-        tree.setShowRoot(false);
-        tree.setPrefHeight(280);
+        var tree = AccountsTable.build();
 
         var detail = textArea().promptText("Select a token to see exactly which Google permissions it carries.");
         detail.attr(t -> {
@@ -66,19 +63,16 @@ public final class AccountsPane {
 
         Runnable refresh = () -> {
             reloadClients.run();
-            var root = new TreeItem<>(new Row("root", null, null, null));
+            var root = new TreeItem<>(Row.note(null, ""));
             for (var a : core.accounts()) {
-                var accNode = new TreeItem<>(new Row("account", a.email(),
-                        a.email() + "   [" + (a.org() == null ? "no client" : a.org()) + "]", null));
+                var accNode = new TreeItem<>(Row.account(a.email(), a.org()));
                 accNode.setExpanded(true);
-                if (!a.hasAnyToken()) accNode.getChildren().add(new TreeItem<>(
-                        new Row("empty", a.email(), "(no tokens - select and press Grant)", null)));
+                if (!a.hasAnyToken()) accNode.getChildren().add(new TreeItem<>(Row.note(a.email(), "(no tokens - select and press Grant)")));
                 for (var t : a.tokens()) accNode.getChildren()
-                        .add(new TreeItem<>(new Row("token", a.email(), describe(t), t)));
+                        .add(new TreeItem<>(Row.token(a.email(), t)));
                 root.getChildren().add(accNode);
             }
-            if (root.getChildren().isEmpty()) root.getChildren().add(new TreeItem<>(
-                    new Row("empty", null, "No accounts yet. Add a client on the Clients tab, then Grant here.", null)));
+            if (root.getChildren().isEmpty()) root.getChildren().add(new TreeItem<>(Row.note(null, "No accounts yet.")));
             tree.setRoot(root);
         };
         refresh.run();
@@ -188,13 +182,4 @@ public final class AccountsPane {
         }
     }
 
-    private static String describe(TokenInfo t) {
-        return t.order() + ". " + pad(t.label(), 36) + pad(t.tier().label, 13)
-                + "used " + pad(TokenInfo.count(t.useCount()), 7)
-                + (t.lastUsed() == 0 ? "never" : "last " + java.time.Instant.ofEpochMilli(t.lastUsed()));
-    }
-
-    private static String pad(String s, int width) {
-        return s.length() >= width ? s.substring(0, width - 1) + " " : s + " ".repeat(width - s.length());
-    }
 }

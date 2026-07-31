@@ -66,6 +66,11 @@ public final class AccountVerbs {
                         + "' belongs to. Pass --org, or add one: uskoag-walletcli org add <id>"
                         + " --file credentials.json --domains " + domainOf(req.account())));
 
+        if (org.owner != null && !org.owner.equalsIgnoreCase(req.account())) {
+            Log.warn("client '" + org.id + "' was created under " + org.owner + " but you are granting "
+                    + req.account() + ". If the Cloud project is still in Testing, add " + req.account()
+                    + " to its test users first, or Google will refuse without explaining why.");
+        }
         var wanted = resolveGroups(req);
         if (wanted.isEmpty()) throw new IOException("nothing to grant: pass --groups, or --scopes for a"
                 + " hand-written set. Known groups: " + Groups.all().stream().map(ScopeGroup::id).toList());
@@ -80,6 +85,10 @@ public final class AccountVerbs {
             done.add(group.id());
         }
         core.keyring.claimDomain(org, req.account());
+        // First account to consent under this client is recorded as its owner, purely so the wallet can
+        // warn next time. A client in Testing status only admits its listed test users, and Google's
+        // refusal when it does not says nothing useful about why.
+        if (org.owner == null || org.owner.isBlank()) org.owner = req.account();
         core.keyring.save();
         core.tokens.clear();
         return Json.of(Asks.Done.yes("consented " + req.account() + " under org '" + org.id + "': "

@@ -19,7 +19,15 @@ import java.util.List;
  */
 public final class OrgRecord {
 
-    String id, label, credentialsJson, clientId, clientSecret;
+    /**
+     * {@code owner} is the account this client was created under, recorded from the first successful
+     * consent. It is not a permission check — it is a warning surface. An OAuth client in Testing status
+     * only lets accounts on its test-user list consent, so a client made under one Gmail account
+     * routinely fails for another with an error that says nothing useful. Recording the owner lets the
+     * wallet say "this client belongs to X, you are granting Y" before the browser opens, rather than
+     * leaving you to interpret Google's refusal.
+     */
+    String id, label, credentialsJson, clientId, clientSecret, owner;
     List<String> domains = new ArrayList<>();
     long addedAt = System.currentTimeMillis();
 

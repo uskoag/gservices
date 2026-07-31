@@ -73,7 +73,7 @@ public final class WalletCore {
     public List<OrgInfo> orgs() {
         if (!keyring.unlocked()) return List.of();
         return keyring.data().orgs().stream()
-                .map(o -> new OrgInfo(o.id, o.label, o.clientId, o.domains(),
+                .map(o -> new OrgInfo(o.id, o.label, o.clientId, o.owner, o.domains(),
                         (int) keyring.accountNames().stream()
                                 .filter(a -> keyring.anyFor(a).map(c -> o.id.equalsIgnoreCase(c.orgId)).orElse(false))
                                 .count(),

@@ -145,8 +145,9 @@ public final class OrgsPane {
 
     private static String line(OrgInfo o) {
         var bad = o.domains().stream().map(DomainRule::problem).filter(java.util.Objects::nonNull).count();
-        return o.id() + "  " + pad(o.label() == null ? "" : o.label(), 30)
-                + pad(o.accounts() + " account(s)", 14)
+        return o.id() + "  " + pad(o.label() == null ? "" : o.label(), 26)
+                + pad(o.owner() == null ? "owner unknown" : "owner " + o.owner(), 34)
+                + pad(o.accounts() + " acct", 8)
                 + (o.domains().isEmpty() ? "(no domains - accounts must name --org)"
                 : String.join(", ", o.domains()))
                 + (bad > 0 ? "   [" + bad + " bad pattern]" : "");
