@@ -74,13 +74,17 @@ public final class Proxy {
                 return;
             }
 
-            var cred = core.keyring.find(grant.account()).orElse(null);
-            if (cred == null) {
-                fail(x, 401, "the credential behind this grant is gone - the wallet may have been locked");
+            // Which token serves this is only knowable here: it depends on the API and the tier of this
+            // individual call, not on the tool. Narrowest sufficient wins, so the wide tokens stay cold.
+            var held = core.keyring.tokensFor(grant.account());
+            var chosen = TokenPicker.pick(held, api.alias, classified.tier()).orElse(null);
+            if (chosen == null) {
+                fail(x, 403, TokenPicker.explain(grant.account(), api.alias, classified.tier(), held));
                 return;
             }
-            var org = core.keyring.org(cred.orgId).orElse(null);
-            Forward.relay(x, api, path, query, body, core.tokens.accessToken(cred, org), core.proxyPortValue());
+            var org = core.keyring.org(chosen.orgId).orElse(null);
+            chosen.used();
+            Forward.relay(x, api, path, query, body, core.tokens.accessToken(chosen, org), core.proxyPortValue());
         } catch (Exception e) {
             Log.error("proxy failure on " + x.getRequestURI(), e);
             try {

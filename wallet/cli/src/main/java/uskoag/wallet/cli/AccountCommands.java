@@ -1,7 +1,9 @@
 package uskoag.wallet.cli;
 
 import uskoag.wallet.wire.Asks;
+import uskoag.wallet.wire.Groups;
 import uskoag.wallet.wire.Profiles;
+import uskoag.wallet.wire.ScopeGroup;
 import uskoag.wallet.wire.WalletClient;
 
 import java.nio.file.Files;
@@ -43,15 +45,26 @@ public final class AccountCommands {
     public static int login(WalletClient client, Args a) throws Exception {
         var email = a.at(1);
         if (email == null) {
-            System.err.println("usage: uskoag-walletcli login <email> [--org <id>] [--profiles gsheets,gmail]");
+            System.err.println("usage: uskoag-walletcli login <email> [--org <id>]");
+            System.err.println("         --groups docs,drive.read,...   one consent screen per group");
+            System.err.println("         --groups gsheets               a tool name expands to its groups");
+            System.err.println("         --scopes <url,url> [--custom-id name]   hand-written set");
+            System.err.println();
+            System.err.println("groups:  " + String.join(", ", Groups.all().stream().map(ScopeGroup::id).toList()));
+            System.err.println("tools:   " + String.join(", ", Profiles.known()));
             return 1;
         }
-        var profiles = a.list("profiles");
-        var scopes = profiles.isEmpty() ? null
-                : profiles.stream().flatMap(p -> Profiles.scopes(p).stream()).distinct().toList();
-        System.err.println("A browser window will open for consent. The wallet keeps what comes back.");
-        return WalletCli.out(client.callRaw("login",
-                new Asks.Login(email, a.get("org", null), scopes, a.num("port", 8888))));
+        var groups = a.list("groups");
+        var scopes = a.list("scopes");
+        if (groups.isEmpty() && scopes.isEmpty()) {
+            System.err.println("nothing to grant. Pass --groups or --scopes; see 'login' with no email for the list.");
+            return 1;
+        }
+        var screens = groups.size() + (scopes.isEmpty() ? 0 : 1);
+        System.err.println(screens + " consent screen(s) will open, one per group. Each becomes its own"
+                + " token with its own expiry.");
+        return WalletCli.out(client.callRaw("login", new Asks.Login(email, a.get("org", null), groups,
+                a.get("custom-id", "custom"), scopes, a.num("port", 8888))));
     }
 
     /**

@@ -1,33 +1,35 @@
 package uskoag.wallet.daemon;
 
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
 
 /**
- * One Google account's refresh token, and the union of every scope ever consented for it.
+ * One token: one account, one scope group, one consent, one expiry.
  *
- * <p>Keyed by email alone, deliberately. A refresh token authorises one specific account, so email is
- * the only honest key; the tool that happened to ask for it is not part of its identity. Keying by tool
- * as well would store the same account several times and, worse, hide the scope problem below.
+ * <p>Several of these per account is the whole point. Google expires refresh tokens for unverified apps
+ * per token, so a single union token dies when its shortest-lived scope does — an unused mail grant
+ * would otherwise take Sheets, Docs and Slides down with it.
  *
- * <p>The union is the point. {@code OAuthToken} keyed its store by {@code md5(appKey)} and never by
- * scopes, so a stored token was reused even after the requested scopes grew — the first tool ever run
- * won and every wider one failed with an opaque 403. Holding the granted set here lets the wallet see
- * that a tool needs more than was granted and widen the consent once, rather than fail obscurely.
+ * <p>{@code scopes} is what this token was actually granted, never a union with anything else. A union
+ * describes no real token, and claiming one means failing later on an opaque 403.
  */
 public final class CredentialRecord {
 
-    String account, orgId, refreshToken;
+    String account, orgId, group, refreshToken;
     List<String> scopes = new ArrayList<>();
     long addedAt, lastUsed;
+    long useCount;
+
+    /** Lower wins among tokens that all satisfy a request. Seeded by narrowness, reorderable by hand. */
+    int order;
 
     public CredentialRecord() {
     }
 
-    public CredentialRecord(String account, String orgId) {
+    public CredentialRecord(String account, String orgId, String group) {
         this.account = account;
         this.orgId = orgId;
+        this.group = group;
         this.addedAt = System.currentTimeMillis();
     }
 
@@ -35,8 +37,12 @@ public final class CredentialRecord {
         return account;
     }
 
-    public String orgId() {
-        return orgId;
+    public String group() {
+        return group;
+    }
+
+    public String key() {
+        return account + "|" + group;
     }
 
     public List<String> scopes() {
@@ -45,17 +51,15 @@ public final class CredentialRecord {
     }
 
     public boolean covers(List<String> wanted) {
-        return scopes().containsAll(wanted);
+        return !wanted.isEmpty() && scopes().containsAll(wanted);
     }
 
-    public List<String> missing(List<String> wanted) {
-        return wanted.stream().filter(s -> !scopes().contains(s)).toList();
+    public boolean coversAny(List<String> alternatives) {
+        return alternatives.stream().anyMatch(s -> scopes().contains(s));
     }
 
-    /** Everything already granted plus everything now needed — what a widening consent must request. */
-    public List<String> unionWith(List<String> wanted) {
-        var all = new LinkedHashSet<>(scopes());
-        all.addAll(wanted);
-        return List.copyOf(all);
+    public void used() {
+        lastUsed = System.currentTimeMillis();
+        useCount++;
     }
 }

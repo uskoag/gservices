@@ -52,6 +52,8 @@ public final class WalletCli {
             case "org" -> "add".equals(a.at(1)) ? AccountCommands.addOrg(client, a)
                     : out(client.callRaw("orgs", Map.of()));
             case "profiles" -> out(client.callRaw("profiles", Map.of()));
+            case "groups" -> out(client.callRaw("groups", Map.of()));
+            case "token", "tokens" -> TokenCommands.run(client, a);
             case "audit" -> out(client.callRaw("audit", new Asks.Recent(a.num("limit", 100))));
             case "lock" -> out(client.callRaw("lock", Map.of()));
             case "backups" -> out(client.callRaw("backups", Map.of()));

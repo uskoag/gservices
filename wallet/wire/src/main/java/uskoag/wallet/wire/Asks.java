@@ -22,10 +22,25 @@ public final class Asks {
     }
 
     /**
-     * Consent for one account. {@code scopes} is what this run needs; the wallet requests the union of
-     * that and everything already granted, so widening never revokes what another tool relies on.
+     * Consent for one account, one browser round trip per group.
+     *
+     * <p>{@code customScopes} is the escape hatch: a scope set nobody foresaw, typed by hand, so an app
+     * we have not catalogued is still serviceable without a code change. It becomes a group named by
+     * {@code customId}.
      */
-    public record Login(String account, String org, List<String> scopes, int port) {
+    public record Login(String account, String org, List<String> groups,
+                        String customId, List<String> customScopes, int port) {
+    }
+
+    public record TokenRef(String account, String group) {
+    }
+
+    /** Preference order among tokens that all satisfy a request; lower wins. */
+    public record Reorder(String account, List<String> groups) {
+    }
+
+    /** {@code days} 0 means "never used at all"; above that, also anything idle beyond the window. */
+    public record Unused(int days) {
     }
 
     /**

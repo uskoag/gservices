@@ -14,11 +14,13 @@ public final class Verbs {
     private final WalletCore core;
     private final AccountVerbs accounts;
     private final PolicyVerbs policy;
+    private final TokenVerbs tokens;
 
     public Verbs(WalletCore core) {
         this.core = core;
         this.accounts = new AccountVerbs(core);
         this.policy = new PolicyVerbs(core);
+        this.tokens = new TokenVerbs(core);
     }
 
     public String dispatch(String verb, String body) throws Exception {
@@ -46,6 +48,9 @@ public final class Verbs {
             case "forget" -> accounts.forget(Json.to(body, Asks.Forget.class));
             case "policy.list", "policy.check", "policy.allow", "policy.revoke", "policy.clear" ->
                     policy.dispatch(verb, body);
+            case "token.list", "token.remove", "token.reorder", "token.unused", "token.removeUnused" ->
+                    tokens.dispatch(verb, body);
+            case "groups" -> Json.of(uskoag.wallet.wire.Groups.all());
             case "audit" -> audit(body);
             case "backups" -> Json.of(CredentialsBackup.all().stream().map(CredentialsBackup::orgOf).toList());
             case "purgebackups" -> Json.of(Asks.Done.yes(CredentialsBackup.purge()

@@ -1,8 +1,10 @@
 package uskoag.wallet.daemon;
 
 import uskoag.wallet.wire.Asks;
+import uskoag.wallet.wire.Groups;
 import uskoag.wallet.wire.Json;
 import uskoag.wallet.wire.Profiles;
+import uskoag.wallet.wire.ScopeGroup;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -10,12 +12,14 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 
 /** Orgs, accounts, consent, migration, export — the inventory, made explicit. */
 public final class AccountVerbs {
+
+    /** What an imported pre-wallet token becomes. Not a real group: its scopes are whatever it had. */
+    static final String LEGACY = "legacy";
 
     private final WalletCore core;
 
@@ -46,37 +50,65 @@ public final class AccountVerbs {
         if (core.settings.backupCredentialsJson) CredentialsBackup.save(org.id, req.credentialsJson());
         return Json.of(Asks.Done.yes("org '" + org.id + "' stored"
                 + (org.domains().isEmpty() ? "" : " for " + String.join(", ", org.domains()))
-                + ". Now: uskoag-walletcli login <email>"));
+                + ". Now: uskoag-walletcli login <email> --groups " + Groups.DOCS.id()));
     }
 
-    /** The consent flow runs here and nowhere else, so a refresh token is never born in a client. */
+    /**
+     * One consent per group, in sequence. That is the cost of separate tokens and it is the point of
+     * them: each expires on its own, so an unused mail grant can no longer take Sheets down with it.
+     */
     public String login(Asks.Login req) throws IOException {
         require();
-        var existing = core.keyring.find(req.account());
         var org = core.keyring.orgFor(req.org() != null ? req.org()
-                        : existing.map(CredentialRecord::orgId).orElse(null), req.account())
+                        : core.keyring.anyFor(req.account()).map(c -> c.orgId).orElse(null),
+                        req.account())
                 .orElseThrow(() -> new IOException("cannot tell which org '" + req.account()
                         + "' belongs to. Pass --org, or add one: uskoag-walletcli org add <id>"
                         + " --file credentials.json --domains " + domainOf(req.account())));
 
-        // Union, never replacement: widening for one tool must not revoke what another already relies on.
-        var wanted = req.scopes() == null || req.scopes().isEmpty() ? Profiles.allScopes() : req.scopes();
-        var union = existing.map(c -> c.unionWith(wanted)).orElse(wanted);
+        var wanted = resolveGroups(req);
+        if (wanted.isEmpty()) throw new IOException("nothing to grant: pass --groups, or --scopes for a"
+                + " hand-written set. Known groups: " + Groups.all().stream().map(ScopeGroup::id).toList());
 
-        var fresh = OAuthRunner.consent(req.account(), org, union, req.port() <= 0 ? 8888 : req.port());
-        existing.ifPresent(core.keyring.data().credentials()::remove);
-        core.keyring.data().credentials().add(fresh);
+        var done = new ArrayList<String>();
+        for (var group : wanted) {
+            var fresh = OAuthRunner.consent(req.account(), org, group, req.port() <= 0 ? 8888 : req.port());
+            core.keyring.find(req.account(), group.id()).ifPresent(core.keyring.data().credentials()::remove);
+            // Narrower tokens seed lower so least privilege is the default without anyone ordering them.
+            fresh.order = group.width();
+            core.keyring.data().credentials().add(fresh);
+            done.add(group.id());
+        }
         core.keyring.claimDomain(org, req.account());
         core.keyring.save();
         core.tokens.clear();
-        return Json.of(Asks.Done.yes("consented: " + req.account() + " under org '" + org.id + "', "
-                + union.size() + " scope(s), ready for: " + readyFor(fresh)));
+        return Json.of(Asks.Done.yes("consented " + req.account() + " under org '" + org.id + "': "
+                + String.join(", ", done)));
+    }
+
+    /** Named groups, else a hand-written scope set, else the suggestion for a named tool. */
+    private List<ScopeGroup> resolveGroups(Asks.Login req) {
+        var out = new ArrayList<ScopeGroup>();
+        if (req.groups() != null) {
+            for (var id : req.groups()) {
+                Groups.byId(id).ifPresentOrElse(out::add, () -> {
+                    if (Profiles.known().contains(id)) {
+                        Profiles.suggested(id).forEach(g -> Groups.byId(g).ifPresent(out::add));
+                    }
+                });
+            }
+        }
+        if (req.customScopes() != null && !req.customScopes().isEmpty()) {
+            var id = req.customId() == null || req.customId().isBlank() ? "custom" : req.customId();
+            out.add(ScopeGroup.handWritten(id, req.customScopes()));
+        }
+        return out.stream().distinct().toList();
     }
 
     /**
-     * Migration in place of rotation, across every tool at once. One account's tokens live in one
-     * directory per tool, so picking a single profile was the wrong shape: the default here is all of
-     * them, merged into one record per email with the union of whatever each one had granted.
+     * Migration for pre-wallet stores. The user has said he would rather re-consent than migrate, so
+     * this stays available but deliberately unelaborated: what it finds becomes one {@code legacy}
+     * token per account, carrying exactly the scopes that token really had.
      */
     public String importOld(Asks.Import req) throws IOException {
         require();
@@ -88,60 +120,54 @@ public final class AccountVerbs {
             return fresh;
         });
 
-        // One candidate per (account, tool store), each carrying the scopes its own token really has.
-        // Never a union across tokens: a union describes none of them, and the wallet would then claim
-        // powers the token it kept does not hold, failing later on an opaque 403.
         var best = new LinkedHashMap<String, Found>();
-        var perProfile = new LinkedHashMap<String, List<String>>();
         var visited = new ArrayList<Path>();
-
         for (var profile : profiles) {
             var root = req.root() != null && !req.root().isBlank()
                     ? Path.of(req.root()) : Profiles.legacyRoot(profile);
             if (!visited.contains(root)) visited.add(root);
             var wanted = req.accounts() == null || req.accounts().isEmpty()
                     ? ImportOldStore.accounts(root) : req.accounts();
-
-            var hit = new ArrayList<String>();
             for (var account : wanted) {
-                var found = ImportOldStore.read(root, account, req.appKey(), Profiles.scopes(profile));
+                var found = ImportOldStore.read(root, account, req.appKey(), legacyScopes(profile));
                 if (found == null) continue;
                 best.merge(account, found, (a, b) -> b.scopes().size() > a.scopes().size() ? b : a);
                 if (org.credentialsJson == null) adoptClient(org, found.credentialsJson());
                 core.keyring.claimDomain(org, account);
-                hit.add(account);
             }
-            perProfile.put(profile, hit);
         }
 
         var taken = new ArrayList<String>();
-        var kept = new ArrayList<String>();
         for (var e : best.entrySet()) {
-            var existing = core.keyring.find(e.getKey()).orElse(null);
-            // Never downgrade. A fresh consent covering every tool must not be replaced by an older,
-            // narrower token just because an import ran afterwards.
-            if (existing != null && existing.refreshToken != null
-                    && existing.scopes().size() >= e.getValue().scopes().size()) {
-                kept.add(e.getKey());
-                continue;
-            }
+            var existing = core.keyring.find(e.getKey(), LEGACY).orElse(null);
+            if (existing != null && existing.scopes().size() >= e.getValue().scopes().size()) continue;
             if (existing != null) core.keyring.data().credentials().remove(existing);
-            var rec = new CredentialRecord(e.getKey(), org.id);
+            var rec = new CredentialRecord(e.getKey(), org.id, LEGACY);
             rec.refreshToken = e.getValue().refreshToken();
             rec.scopes = List.copyOf(e.getValue().scopes());
+            rec.order = 1000;
             core.keyring.data().credentials().add(rec);
             taken.add(e.getKey());
         }
         core.keyring.save();
         if (req.deleteOld()) deleteOldStores(visited, best.keySet(), req.appKey());
-
-        return Json.of(Map.of(
-                "org", org.id,
-                "imported", taken,
-                "keptExistingBecauseWider", kept,
-                "readyFor", readyMap(taken),
-                "perProfile", perProfile,
+        return Json.of(Map.of("org", org.id, "imported", taken,
+                "note", "imported as 'legacy' tokens. Re-consent into proper groups when convenient.",
                 "rootsScanned", visited.stream().map(Path::toString).toList()));
+    }
+
+    /** The scope set each old tool consented under, needed only to open its stored token. */
+    private static List<String> legacyScopes(String profile) {
+        return switch (profile) {
+            case Profiles.GSHEETS -> List.of("https://www.googleapis.com/auth/spreadsheets",
+                    "https://www.googleapis.com/auth/drive");
+            case Profiles.GMAIL -> List.of("https://www.googleapis.com/auth/gmail.modify",
+                    "https://www.googleapis.com/auth/gmail.compose");
+            case Profiles.GSLIDES -> List.of("https://www.googleapis.com/auth/presentations",
+                    "https://www.googleapis.com/auth/drive.readonly",
+                    "https://www.googleapis.com/auth/drive.file");
+            default -> List.of("https://www.googleapis.com/auth/drive");
+        };
     }
 
     /**
@@ -151,19 +177,22 @@ public final class AccountVerbs {
      */
     public String export(Asks.Export req) throws IOException {
         require();
-        var cred = core.keyring.find(req.account())
-                .orElseThrow(() -> new IOException("no such account: " + req.account()));
+        var held = core.keyring.tokensFor(req.account());
+        if (held.isEmpty()) throw new IOException("no tokens for " + req.account());
+        var cred = held.getFirst();
+        var org = core.keyring.org(cred.orgId)
+                .orElseThrow(() -> new IOException("no OAuth client stored for org '" + cred.orgId + "'"));
         core.audit.record(new AuditEvent(System.currentTimeMillis(), "wallet", req.account(), "wallet",
                 req.raw() ? "EXPORT RAW CREDENTIAL" : "export access token", uskoag.wallet.wire.Tier.DESTRUCTIVE,
                 Verdict.ALLOW, 1, "cli", ProcessHandle.current().pid(), req.account(), "wallet export"));
-        var org = core.keyring.org(cred.orgId)
-                .orElseThrow(() -> new IOException("no OAuth client stored for org '" + cred.orgId + "'"));
         if (!req.raw()) {
-            return Json.of(Map.of("accessToken", core.tokens.accessToken(cred, org), "expiresInSeconds", 3600));
+            return Json.of(Map.of("accessToken", core.tokens.accessToken(cred, org),
+                    "group", cred.group, "expiresInSeconds", 3600));
         }
         Log.warn("RAW CREDENTIAL EXPORTED for " + cred.account);
-        return Json.of(Map.of("account", cred.account, "org", cred.orgId, "clientId", org.clientId,
-                "clientSecret", org.clientSecret, "refreshToken", cred.refreshToken, "scopes", cred.scopes()));
+        return Json.of(Map.of("account", cred.account, "org", cred.orgId, "group", cred.group,
+                "clientId", org.clientId, "clientSecret", org.clientSecret,
+                "refreshToken", cred.refreshToken, "scopes", cred.scopes()));
     }
 
     public String forget(Asks.Forget req) throws IOException {
@@ -173,7 +202,8 @@ public final class AccountVerbs {
             core.keyring.save();
             core.tokens.clear();
         }
-        return Json.of(gone ? Asks.Done.yes("forgotten") : Asks.Done.no("no such account"));
+        return Json.of(gone ? Asks.Done.yes("all tokens for " + req.account() + " removed from the wallet")
+                : Asks.Done.no("no such account"));
     }
 
     private static void adoptClient(OrgRecord org, String credentialsJson) {
@@ -185,24 +215,6 @@ public final class AccountVerbs {
         } catch (IOException e) {
             Log.warn("could not read the OAuth client during import - " + e);
         }
-    }
-
-    /**
-     * Which tools each imported account can actually drive, which is the only honest way to report an
-     * import: an old store holds one token per tool, so importing may well leave an account able to do
-     * Sheets and not Gmail. Saying so here is what tells you which ones still need a login.
-     */
-    private Map<String, String> readyMap(List<String> accounts) {
-        var out = new LinkedHashMap<String, String>();
-        for (var a : accounts) {
-            core.keyring.find(a).ifPresent(c -> out.put(a, readyFor(c)));
-        }
-        return out;
-    }
-
-    private static String readyFor(CredentialRecord rec) {
-        var ready = Profiles.known().stream().filter(p -> rec.covers(Profiles.scopes(p))).toList();
-        return ready.isEmpty() ? "(no full tool scope set yet)" : String.join(", ", ready);
     }
 
     private static String domainOf(String email) {

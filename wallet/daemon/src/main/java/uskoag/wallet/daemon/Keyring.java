@@ -84,7 +84,8 @@ public final class Keyring {
         // older shape into the current one and leave the fields that moved simply unset - credentials
         // with no org, say - which looks like a working wallet and is not one. Refusing is recoverable;
         // silently half-loading and then saving over the original is not.
-        if (read.version != null && !KeyringData.VERSION.equals(read.version)) {
+        var migrated = Migrate.forward(read);
+        if (read.version != null && !KeyringData.VERSION.equals(read.version) && !migrated) {
             master = null;
             throw new IOException("this keyring is version " + read.version + " and this wallet writes version "
                     + KeyringData.VERSION + ". Nothing was changed. Move " + WalletPaths.keyringFile().getFileName()
@@ -92,6 +93,7 @@ public final class Keyring {
         }
         data = read;
         passphrase = phrase.clone();
+        if (migrated) save();
         if (data.auditKeyB64 == null) {
             data.auditKeyB64 = Base64.getEncoder().encodeToString(Aes.randomKey().getEncoded());
             save();
@@ -144,10 +146,28 @@ public final class Keyring {
         return new SecretKeySpec(Base64.getDecoder().decode(data().auditKeyB64), "AES");
     }
 
-    public Optional<CredentialRecord> find(String account) {
-        return account == null ? Optional.empty() : data().credentials().stream()
+    /** Every token this account holds, in preference order. */
+    public java.util.List<CredentialRecord> tokensFor(String account) {
+        if (account == null) return java.util.List.of();
+        return data().credentials().stream()
                 .filter(c -> c.account.equalsIgnoreCase(account))
+                .sorted(java.util.Comparator.comparingInt(c -> c.order))
+                .toList();
+    }
+
+    /** Distinct accounts, since one account now spans several token records. */
+    public java.util.List<String> accountNames() {
+        return data().credentials().stream().map(c -> c.account).distinct().sorted().toList();
+    }
+
+    public Optional<CredentialRecord> find(String account, String group) {
+        return account == null ? Optional.empty() : data().credentials().stream()
+                .filter(c -> c.account.equalsIgnoreCase(account) && c.group.equalsIgnoreCase(group))
                 .findFirst();
+    }
+
+    public Optional<CredentialRecord> anyFor(String account) {
+        return tokensFor(account).stream().findFirst();
     }
 
     public Optional<OrgRecord> org(String id) {

@@ -30,8 +30,9 @@ public final class OAuthRunner {
     private OAuthRunner() {
     }
 
-    public static CredentialRecord consent(String account, OrgRecord org, List<String> scopes, int port)
-            throws IOException {
+    public static CredentialRecord consent(String account, OrgRecord org,
+                                           uskoag.wallet.wire.ScopeGroup group, int port) throws IOException {
+        var scopes = group.scopes();
         var secrets = GoogleClientSecrets.load(GsonFactory.getDefaultInstance(),
                 new StringReader(org.credentialsJson));
         var flow = new GoogleAuthorizationCodeFlow.Builder(
@@ -42,17 +43,19 @@ public final class OAuthRunner {
                 .build();
 
         var receiver = new LocalServerReceiver.Builder().setPort(port).build();
-        var credential = new AuthorizationCodeInstalledApp(flow, receiver).authorize(account);
-        return record(account, org.id, scopes, credential);
+        // authorize() is keyed per user id in the store; keying it per group too keeps two consents in
+        // the same run from colliding in the in-memory store and returning each other's credential.
+        var credential = new AuthorizationCodeInstalledApp(flow, receiver).authorize(account + "|" + group.id());
+        return record(account, org.id, group.id(), scopes, credential);
     }
 
-    static CredentialRecord record(String account, String orgId, List<String> scopes, Credential credential)
-            throws IOException {
+    static CredentialRecord record(String account, String orgId, String group, List<String> scopes,
+                                   Credential credential) throws IOException {
         if (credential.getRefreshToken() == null) {
             throw new IOException("Google returned no refresh token for " + account
                     + " - revoke the app at myaccount.google.com and consent again");
         }
-        var r = new CredentialRecord(account, orgId);
+        var r = new CredentialRecord(account, orgId, group);
         r.refreshToken = credential.getRefreshToken();
         r.scopes = List.copyOf(scopes);
         return r;
