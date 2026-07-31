@@ -16,4 +16,16 @@ public class SheetsService {
         ).setApplicationName(oauth.appName)
         .build();
     }
+
+    /**
+     * The wallet-aware route. {@link ServiceAccess} carries both halves — an initializer that puts the
+     * right header on each call, and, when a wallet is brokering, the loopback root URL that makes it
+     * the only way out. Callers do not need to know which source answered.
+     */
+    public static Sheets sheets(ServiceAccess access, String appName) throws GeneralSecurityException, IOException {
+        var transport = GoogleNetHttpTransport.newTrustedTransport();
+        var builder = new Sheets.Builder(transport, GsonFactory.getDefaultInstance(), access.initializer())
+                .setApplicationName(appName);
+        return access.applyTo(builder).build();
+    }
 }

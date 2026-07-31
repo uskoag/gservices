@@ -23,6 +23,21 @@
             <version>${project.version}</version>
         </dependency>
 
+        <!--
+          The wallet client, and only the client: a thin protocol jar with no engine, no ArcadeDB and no
+          JavaFX behind it. It contributes a CredentialSource through ServiceLoader, so this binary uses
+          a wallet when one is installed and falls back to the console app-key prompt when none is.
+
+          Note the direction. The gservices *libraries* stay wallet-free — anyone embedding
+          uskoag-gservices-sheets is untouched by this. Only the end-user binary, itself an application,
+          carries it. Build order on a clean machine: gservices libraries, then uskoag/wallet, then this.
+        -->
+        <dependency>
+            <groupId>io.github.uskoag</groupId>
+            <artifactId>uskoag-wallet-wire</artifactId>
+            <version>1.0</version>
+        </dependency>
+
         <dependency>
             <groupId>com.google.apis</groupId>
             <artifactId>google-api-services-sheets</artifactId>
@@ -33,6 +48,19 @@
             <groupId>com.google.api-client</groupId>
             <artifactId>google-api-client</artifactId>
             <version>${google.api.client.ver}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.google.code.gson</groupId>
+            <artifactId>gson</artifactId>
+            <version>${gson.ver}</version>
+        </dependency>
+
+        <!-- In-memory SQL engine backing the `query` command -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <version>${h2.ver}</version>
         </dependency>
     </dependencies>
 
@@ -71,6 +99,43 @@
                     </execution>
                 </executions>
             </plugin>
+            <!--
+                Pre-warm the JRC AOT cache right after packaging so the first
+                agent invocation is always noise-free.  Running 'listperms'
+                (no Google auth required) triggers the JRC launcher to build
+                the AOT cache during 'mvn package' rather than on first use.
+                Skip on CI or wherever the JRC launcher isn't on PATH:
+                    mvn package -Dskip.aot.warmup=true
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <version>3.1.0</version>
+                <executions>
+                    <execution>
+                        <id>warm-aot-cache</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <skip>${skip.aot.warmup}</skip>
+                            <target>
+                                <!-- failonerror=false: build succeeds even if launcher not on PATH -->
+                                <exec executable="uskoag-sheetcli.exe" failonerror="false" resultproperty="aot.warmup.result">
+                                    <arg value="listperms"/>
+                                </exec>
+                                <echo message="AOT warmup exit code: ${aot.warmup.result}"/>
+                            </target>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
     </build>
+
+    <properties>
+        <!-- Set to true on CI or where uskoag-sheetcli.exe is not on PATH -->
+        <skip.aot.warmup>false</skip.aot.warmup>
+    </properties>
 </project>

@@ -131,7 +131,38 @@ public class OAuthToken {
 
         return new AuthorizationCodeInstalledApp(flow, receiver).authorize(user);
     }
-    
-    
-    
+
+    /**
+     * Loads the already-stored (encrypted) credential for this app-key <em>without</em> launching the
+     * interactive browser flow. Returns {@code null} when no token has been stored for this app-key
+     * (i.e. this account was never logged in with this key) — letting callers report login state
+     * instead of triggering a consent prompt.
+     */
+    public Credential loadStoredCredential(final NetHttpTransport transport) throws IOException {
+        var tokensDir = activeCredDir().resolve("tokens_" + encryptedAppKey);
+        if (!Files.isDirectory(tokensDir)) return null; // never logged in with this app-key
+        var flow = new GoogleAuthorizationCodeFlow.Builder(
+            transport, GsonFactory.getDefaultInstance(), clientSecrets(), scopes
+        )
+        .setDataStoreFactory(tokensDataStore())
+        .setAccessType(accessType)
+        .build();
+        return flow.loadCredential(user);
+    }
+
+    /**
+     * Deletes the stored (encrypted) token folder for this app-key so the next {@link #credentials}
+     * call triggers a fresh browser consent. Use this to re-grant after the requested scopes change
+     * (a stored token keeps its original scopes; the library reuses it without re-prompting). Returns
+     * {@code true} if a token folder existed and was removed.
+     */
+    public boolean deleteStoredCredential() throws IOException {
+        var tokensDir = activeCredDir().resolve("tokens_" + encryptedAppKey);
+        if (!Files.isDirectory(tokensDir)) return false;
+        try (var paths = Files.walk(tokensDir)) {
+            paths.sorted(java.util.Comparator.reverseOrder())
+                 .forEach(p -> { try { Files.delete(p); } catch (IOException e) { throw new UncheckedIOException(e); } });
+        }
+        return true;
+    }
 }
