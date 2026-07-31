@@ -25,6 +25,14 @@ public final class FxGateway implements ApprovalGateway {
         Platform.runLater(() -> UnlockWindow.show(core, null, because));
     }
 
+    @Override
+    public void showWindow() {
+        Platform.runLater(() -> {
+            if (core.keyring.unlocked()) MainWindow.show(core);
+            else UnlockWindow.show(core, () -> MainWindow.show(core), null);
+        });
+    }
+
     /**
      * Answering yes opens a browser, so this asks rather than announces. It is also the moment the old
      * store's worst failure becomes visible instead of silent: a tool needing wider scopes than were

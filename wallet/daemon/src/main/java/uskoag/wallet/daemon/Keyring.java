@@ -79,7 +79,18 @@ public final class Keyring {
 
         master = Aes.derive(phrase, salt);
         var json = new String(Aes.decrypt(payload, master), StandardCharsets.UTF_8);
-        data = Json.to(json, KeyringData.class);
+        var read = Json.to(json, KeyringData.class);
+        // A keyring written by a different version must fail loudly here. Gson would happily parse an
+        // older shape into the current one and leave the fields that moved simply unset - credentials
+        // with no org, say - which looks like a working wallet and is not one. Refusing is recoverable;
+        // silently half-loading and then saving over the original is not.
+        if (read.version != null && !KeyringData.VERSION.equals(read.version)) {
+            master = null;
+            throw new IOException("this keyring is version " + read.version + " and this wallet writes version "
+                    + KeyringData.VERSION + ". Nothing was changed. Move " + WalletPaths.keyringFile().getFileName()
+                    + " aside and start fresh, or run a wallet of the matching version to export first.");
+        }
+        data = read;
         passphrase = phrase.clone();
         if (data.auditKeyB64 == null) {
             data.auditKeyB64 = Base64.getEncoder().encodeToString(Aes.randomKey().getEncoded());

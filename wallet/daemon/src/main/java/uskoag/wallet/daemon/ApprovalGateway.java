@@ -15,6 +15,14 @@ public interface ApprovalGateway {
     void unlockNeeded(String because);
 
     /**
+     * Bring the wallet's own window forward. Called when a second launch finds this one already
+     * running: the expectation when someone starts an app that is already up is that its window
+     * appears, not that a second copy argues with the first.
+     */
+    default void showWindow() {
+    }
+
+    /**
      * A tool needs scopes this account has never granted. Answering yes opens a browser, so this is a
      * question and not a notification.
      */

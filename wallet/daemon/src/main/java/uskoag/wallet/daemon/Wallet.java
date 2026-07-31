@@ -15,7 +15,16 @@ public final class Wallet {
     private final Proxy proxy = new Proxy(core);
     private final ControlServer control = new ControlServer(core);
 
+    /**
+     * @throws AlreadyRunning when another wallet already owns this home. Starting anyway would give
+     *                        both processes the same handshake file and split the audit between them.
+     */
     public void start() throws IOException {
+        if (!SingleInstance.claim()) {
+            throw new AlreadyRunning("another uskoag-wallet already owns " + uskoag.wallet.wire.WalletPaths.home()
+                    + " (pid " + SingleInstance.holder() + "). Use that one, or set UKAG_WALLET_HOME"
+                    + " to run a separate wallet.");
+        }
         var proxyPort = proxy.start();
         control.start(proxyPort);
         Runtime.getRuntime().addShutdownHook(new Thread(this::stop));
@@ -31,6 +40,8 @@ public final class Wallet {
             proxy.stop();
             core.lock();
         } catch (Exception ignored) {
+        } finally {
+            SingleInstance.release();
         }
     }
 }

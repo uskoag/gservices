@@ -24,6 +24,10 @@ public final class Verbs {
     public String dispatch(String verb, String body) throws Exception {
         return switch (verb) {
             case "ping" -> Json.of(Map.of("pong", true));
+            case "show" -> {
+                core.gateway().showWindow();
+                yield Json.of(Asks.Done.yes("window raised"));
+            }
             case "status" -> Json.of(core.status());
             case "unlock" -> unlock(body);
             case "lock" -> {

@@ -22,7 +22,13 @@ import java.util.List;
  */
 public final class KeyringData {
 
-    String version = "2";
+    /**
+     * Bumped whenever the stored shape changes. {@link Keyring#unlock} refuses a mismatch rather than
+     * letting Gson parse an older shape into this one and leave the moved fields unset.
+     */
+    public static final String VERSION = "2";
+
+    String version = VERSION;
     long createdAt = System.currentTimeMillis();
     String auditKeyB64;
     List<OrgRecord> orgs = new ArrayList<>();
