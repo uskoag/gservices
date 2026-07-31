@@ -10,18 +10,28 @@
     <version>1.0</version>
     <packaging>pom</packaging>
 
-    <description>Parent POM for Google Services (OAuth, Sheets, Docs, Drive, Slides, YouTube) with centralized dependency management</description>
+    <description>Parent POM for Google Services (OAuth, Sheets, Docs, Drive, Slides, YouTube, Gmail) with centralized dependency management</description>
 
     <modules>
-        <module>uskoag-gservices-oauth</module>
-        <module>uskoag-gservices-sheets</module>
-        <module>uskoag-gservices-drive</module>
-        <module>uskoag-gservices-docs</module>
-        <module>uskoag-gservices-slides</module>
-        <module>uskoag-gservices-youtube</module>
-        <module>uskoag-gservices-gmail</module>
-        <module>uskoag-gservices-spreadsheet_cli</module>
+        <module>oauth</module>
+        <module>sheets</module>
+        <module>drive</module>
+        <module>docs</module>
+        <module>slides</module>
+        <module>youtube</module>
+        <module>gmail</module>
+        <module>spreadsheet_cli</module>
+        <module>gmail_cli</module>
+        <module>gslides_cli</module>
     </modules>
+
+    <!--
+      The gdrive subsystem moved out to the uskoag/gdrive repository (C:\user\code\uskoag\gdrive) and
+      is now a self-standing reactor with its own parent. It still consumes uskoag-gservices-drive and
+      uskoag-gservices-oauth, but as ordinary released dependencies resolved from the local repository —
+      so a change to either must be `mvn install`ed here before gdrive will see it.
+    -->
+
 
     <properties>
         <maven.compiler.source>21</maven.compiler.source>
@@ -37,6 +47,13 @@
         <google.slides.ver>v1-rev20250401-2.0.0</google.slides.ver>
         <google.youtube.ver>v3-rev20250714-2.0.0</google.youtube.ver>
         <google.gmail.ver>v1-rev20251201-2.0.0</google.gmail.ver>
+
+        <!-- CLI tooling -->
+        <gson.ver>2.10.1</gson.ver>
+        <h2.ver>2.4.240</h2.ver>
+        <jsoup.ver>1.21.1</jsoup.ver>
+        <javax.mail.ver>1.6.2</javax.mail.ver>
+        <unicode.console.ver>1.0</unicode.console.ver>
     </properties>
 
 </project>

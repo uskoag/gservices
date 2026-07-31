@@ -1,0 +1,130 @@
+uskoag-gslides - Google Slides from the command line
+
+USAGE
+  uskoag-gslides [-v] [--quiet] [--dry-run] [-e EMAIL] [-k APPKEY] <command> [args...]
+
+ADDRESSING
+  <deck>     presentation id, or any Slides URL it can be pulled out of
+  <page>     1-based slide number, or a pageId
+  <elem>     element objectId - assign your own with --id at create time, or
+             discover existing ones with `describe`. Valid ids are 5-50 chars,
+             first char [a-zA-Z0-9_], rest [a-zA-Z0-9_-:]. NO DOTS: use
+             slide3_title, not slide3.title.
+  <elem>@S:E half-open character range within an element's text
+
+READ
+  describe <deck>                  Deck outline: every slide's pageId, and each element's
+                                   id, type, geometry and first line of text. Call this
+                                   FIRST - element ids are not derivable. [--format json]
+  get <deck>                       Title, page size, slide count
+  get <deck> <page>                Page background + element list with geometry
+  get <deck> <page> <elem>         One element in full
+  runs <deck> <elem>               Per-run [start,end) ranges, styles and text, plus
+                                   paragraph structure. Read this before any @S:E styling.
+  notes <deck> <page>              Speaker notes
+
+EXPORT
+  export <deck>                    All slides to PNG in ./<presId>/
+  export <deck> --slide N          One slide to PNG (the render-look-fix loop)
+  export <deck> --video            MP4 slideshow (needs ffmpeg on PATH)
+
+DECK AND SLIDES
+  deck new "<title>"               Create a deck; prints its id. [--copy-of <deck>]
+  page add <deck>                  Add slide(s). [--count N] [--at N] [--id NAME]
+                                   [--layout BLANK|TITLE|TITLE_AND_BODY|...]
+  page delete <deck> <page>
+  page duplicate <deck> <page>     [--end] [--id NAME]
+  page move <deck> <page> --to N
+
+CREATE ELEMENTS  (--id NAME is what makes an element addressable and re-runnable)
+  create text <deck> <page> --id NAME --at X,Y --size W,H [--html H | --text T]
+  create box|ellipse <deck> <page> --id NAME --at X,Y --size W,H
+                                   [--fill HEX] [--alpha A] [--outline HEX] [--weight PT]
+                                   [--no-outline] [--html H | --text T]
+  create image <deck> <page> --id NAME --src <localPath|url> --at X,Y --size W,H
+                                   or --cover [--aspect A] for full-bleed
+  create video <deck> <page> --id NAME --youtube VIDEO_ID --at X,Y --size W,H
+  create line  <deck> <page> --id NAME --at X,Y --size W,H
+  delete <deck> <elem>
+  geom <deck> <elem>               [--at X,Y] [--size W,H] [--z front|back|forward|backward]
+
+  Geometry is in INCHES throughout.
+
+TEXT  (ops are applied IN ORDER and use the --op=value form)
+  text <deck> <elem> --set="TEXT"          Replace all text, plain
+  text <deck> <elem> --set-html="<b>x</b>" Replace all text, styled - NO indices needed.
+                                           This is the authoring path; prefer it.
+  text <deck> <elem> --set-file=PATH       Plain text from a file
+  text <deck> <elem> --set-html-file=PATH  HTML from a file (best for long/unicode text)
+  text <deck> <elem> --replace="OLD=>NEW"      First occurrence
+  text <deck> <elem> --replace-all="OLD=>NEW"  Every occurrence
+  text <deck> <elem> --delete=S:E              Delete a character range
+
+  Supported HTML: b/strong, i/em, u, s/strike/del, a href, br, p, div, h1-h6,
+  ul/ol + li, and style="color: ; font-size: ; font-family: ; text-align: ".
+
+STYLE  (level 2 - explicit indices, for surgical edits to existing text)
+  style <deck> <elem>[@S:E]        [--bold|--no-bold] [--italic|--no-italic]
+                                   [--underline|--no-underline] [--strike|--no-strike]
+                                   [--size PT] [--font NAME] [--color HEX] [--link URL]
+  para <deck> <elem>[@S:E]         [--align START|CENTER|END|JUSTIFIED]
+                                   [--bullets disc|number|arrow|check]
+                                   [--line-spacing N] [--indent IN]
+                                   [--space-above PT] [--space-below PT]
+  Omitting @S:E means the element's whole text.
+
+IMAGES  (a local path is uploaded to Drive and shared automatically - the Slides API can
+         only ingest a publicly fetchable URL, and that is this tool's problem not yours)
+  image <deck> <elem> --src <localPath|url>   Replace image content in place, keeping
+                                              position, size and z-order. [--method]
+  image upload <localPath>                    Upload + share; prints the URLs
+  background <deck> <page>         --color HEX | --image <localPath|url> | --clear
+  imagebg <deck> <page> <localPath|url>       Full-bleed image behind existing content
+                                              plus a legibility scrim. [--scrim 0.55]
+                                              [--aspect A]  /  --undo removes exactly it
+
+TEMPLATING
+  fill <deck> KEY=VALUE [KEY=VALUE ...]   Whole-deck replaceAllText; reports per-key
+  fill <deck> --map file.json             occurrence counts. [--ignore-case]
+
+ADMIN
+  grant --read|--write <deck> [name]   Add a deck to the local allowlist
+  revoke <deck>                        Remove it
+  listperms                            Show the allowlist (no Google auth needed)
+  reauth                               Delete the stored token; next call re-consents
+  help                                 This text
+
+EXPORT OPTIONS
+  --slide N        Render exactly one slide (1-based)
+  --start N        First slide (default 1)
+  --end N          Last slide (default: last)
+  --out PATH       Output dir, or an output .png file when used with --slide
+  --quick          Use the getThumbnail API: capped near 1600px but no rate-limit sleep,
+                   so it is the cheap option for a quick look
+  --size SZ        LARGE|MEDIUM|SMALL, --quick only (default LARGE)
+  --max-width N    Downscale to N pixels wide - what an agent pays to look at an image
+                   scales with its dimensions
+  --delay MS       Sleep between full-resolution renders (default 3000; Google rate
+                   limits the export endpoint)
+  --video          Also build an MP4
+  --duration S     Seconds per slide in the video (default 1.0)
+
+GLOBAL FLAGS
+  -v, --verbose    [INFO] lines to stderr
+  --quiet          Suppress the SUCCESS: line (exit code still conveys it)
+  --dry-run        Show the API requests without sending them
+  -e, --email      Google account (default: the first one configured)
+  -k, --key        OAuth app-key (default: uskoag-gslides-cli-key-2026)
+
+OUTPUT CONTRACT
+  stdout carries only the command's data, or one SUCCESS: line.
+  stderr carries only [ERROR] (always) and [INFO] (only with -v).
+
+NOTES
+  Every deck must be on the local allowlist first:
+    uskoag-gslides grant --write <deck> "My deck"
+  A deck made by `deck new` is granted automatically.
+  New decks are 16:9 - presentations.create ignores every field but the title, and the
+  API exposes no way to change page size afterwards. Use --copy-of for other sizes.
+  Deck-level PDF/PPTX export is uskoag-gdrivecli's job (it exports the file); this tool
+  exports slides.

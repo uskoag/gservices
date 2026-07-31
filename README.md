@@ -14,6 +14,7 @@ This is a multi-module Maven project with the following artifacts:
 | **uskoag-gservices-docs** | Google Docs API service | `io.github.uskoag:uskoag-gservices-docs:1.0` |
 | **uskoag-gservices-slides** | Google Slides API service | `io.github.uskoag:uskoag-gservices-slides:1.0` |
 | **uskoag-gservices-youtube** | YouTube Data API v3 service | `io.github.uskoag:uskoag-gservices-youtube:1.0` |
+| **uskoag-gservices-gmail** | Gmail API service | `io.github.uskoag:uskoag-gservices-gmail:1.0` |
 
 ## Requirements
 
@@ -92,6 +93,25 @@ var oauthToken = oauthToken("App-name", "app-key",
 ).credential("someemail@gmail.com");
 
 var slides = SlidesService.slides(oauthToken);
+```
+
+### Example: Gmail
+
+```java
+import uskoag.gservices.GmailService;
+import com.google.api.services.gmail.GmailScopes;
+
+var oauthToken = oauthToken("App-name", "app-key",
+        GmailScopes.GMAIL_READONLY
+).credential("someemail@gmail.com");
+
+var gmail = GmailService.gmail(oauthToken);
+
+// List the most recent messages in the inbox
+var messages = gmail.users().messages()
+        .list("me")
+        .setMaxResults(10L)
+        .execute();
 ```
 
 ### Example: YouTube Data API

@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.github.uskoag</groupId>
+        <artifactId>uskoag-gservices-parent</artifactId>
+        <version>1.0</version>
+    </parent>
+
+    <artifactId>uskoag-gservices-gmail_cli</artifactId>
+    <packaging>jar</packaging>
+
+    <description>Command-line Gmail companion: read, search and draft emails (no send), with per-app-key encrypted OAuth tokens</description>
+
+    <dependencies>
+        <!-- The wallet client, and only the client. Contributes a CredentialSource through
+             ServiceLoader; absent, this binary behaves exactly as it does today. -->
+        <dependency>
+            <groupId>io.github.uskoag</groupId>
+            <artifactId>uskoag-wallet-wire</artifactId>
+            <version>1.0</version>
+        </dependency>
+
+        <dependency>
+            <groupId>io.github.uskoag</groupId>
+            <artifactId>uskoag-gservices-gmail</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.google.apis</groupId>
+            <artifactId>google-api-services-gmail</artifactId>
+            <version>${google.gmail.ver}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.google.api-client</groupId>
+            <artifactId>google-api-client</artifactId>
+            <version>${google.api.client.ver}</version>
+        </dependency>
+
+        <!-- JSON output -->
+        <dependency>
+            <groupId>com.google.code.gson</groupId>
+            <artifactId>gson</artifactId>
+            <version>${gson.ver}</version>
+        </dependency>
+
+        <!-- MIME message construction for drafts (all-in-one jar bundles JavaBeans Activation) -->
+        <dependency>
+            <groupId>com.sun.mail</groupId>
+            <artifactId>javax.mail</artifactId>
+            <version>${javax.mail.ver}</version>
+        </dependency>
+
+        <!-- HTML parsing for strip-quotes (remove quoted reply history from HTML bodies) -->
+        <dependency>
+            <groupId>org.jsoup</groupId>
+            <artifactId>jsoup</artifactId>
+            <version>${jsoup.ver}</version>
+        </dependency>
+
+        <!-- UTF-8 console output on Windows (SetConsoleOutputCP 65001 + UTF-8 streams) so unicode mail
+             renders instead of mojibake; uses the FFM API, requires JDK 22+ at runtime -->
+        <dependency>
+            <groupId>io.github.xyz-jphil</groupId>
+            <artifactId>xyz-jphil-windows_console_set_unicode_output</artifactId>
+            <version>${unicode.console.ver}</version>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- Maven Shade Plugin to create fat JAR with all dependencies -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.5.1</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <transformers>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <mainClass>uskoag.gservices.GmailCli</mainClass>
+                                    <manifestEntries>
+                                        <!-- Grant FFM native access to the classpath (unnamed module) so the
+                                             unicode-console lib's kernel32 call runs without a JDK warning -->
+                                        <Enable-Native-Access>ALL-UNNAMED</Enable-Native-Access>
+                                    </manifestEntries>
+                                </transformer>
+                                <!-- Merge META-INF/services so javax.mail providers survive shading -->
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                            </transformers>
+                            <finalName>uskoag-gmailcli</finalName>
+                            <filters>
+                                <filter>
+                                    <!-- Exclude signature files to avoid security exceptions -->
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                        <!-- Drop the unicode-console lib's module descriptor: it runs from the
+                                             classpath (unnamed module) in the fat jar, so its module-info is dead weight -->
+                                        <exclude>module-info.class</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

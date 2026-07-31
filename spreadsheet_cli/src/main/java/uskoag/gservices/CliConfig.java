@@ -143,6 +143,20 @@ public class CliConfig {
         permissions.put(spreadsheetId, new Permission(spreadsheetId, name, read, write));
     }
 
+    public void removePermission(String spreadsheetId) {
+        permissions.remove(spreadsheetId);
+    }
+
+    public java.util.List<String> describePermissions() {
+        java.util.List<String> lines = new java.util.ArrayList<>();
+        for (Permission p : permissions.values()) {
+            String level = p.canWrite ? "[write]" : "[read] ";
+            String label = (p.name != null && !p.name.isEmpty()) ? " (" + p.name + ")" : "";
+            lines.add(level + " " + p.spreadsheetId + label);
+        }
+        return lines;
+    }
+
     public void saveConfig() throws IOException {
         try {
             DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();

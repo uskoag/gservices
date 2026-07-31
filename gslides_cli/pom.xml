@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.github.uskoag</groupId>
+        <artifactId>uskoag-gservices-parent</artifactId>
+        <version>1.0</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>uskoag-gservices-gslides_cli</artifactId>
+    <packaging>jar</packaging>
+
+    <description>Google Slides from the command line: element/text/style primitives over an
+        addressable deck, plus per-slide and batch PNG/MP4 export. Also importable as a library
+        (the thin jar keeps its dependencies; the shaded uskoag-gslides.jar is the CLI).</description>
+
+    <properties>
+        <main.class>uskoag.gservices.slides.GSlidesCli</main.class>
+        <cli.name>uskoag-gslides</cli.name>
+        <!-- Set true on CI or wherever uskoag-gslides.exe is not on PATH -->
+        <skip.aot.warmup>false</skip.aot.warmup>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>io.github.uskoag</groupId>
+            <artifactId>uskoag-gservices-slides</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.uskoag</groupId>
+            <artifactId>uskoag-gservices-oauth</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <!-- Slides createImage can only ingest a public URL, so local images are uploaded+shared -->
+        <dependency>
+            <groupId>io.github.uskoag</groupId>
+            <artifactId>uskoag-gservices-drive</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.google.code.gson</groupId>
+            <artifactId>gson</artifactId>
+            <version>${gson.ver}</version>
+        </dependency>
+
+        <!-- HTML is the level-1 rich-text input format: b/i/u/s/a/span/br/p/li -->
+        <dependency>
+            <groupId>org.jsoup</groupId>
+            <artifactId>jsoup</artifactId>
+            <version>${jsoup.ver}</version>
+        </dependency>
+
+        <!-- SetConsoleOutputCP 65001 so Devanagari and dashes render instead of mojibake -->
+        <dependency>
+            <groupId>io.github.xyz-jphil</groupId>
+            <artifactId>xyz-jphil-windows_console_set_unicode_output</artifactId>
+            <version>${unicode.console.ver}</version>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.5.1</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <!--
+                                finalName differs from the build finalName, so shade writes
+                                target/uskoag-gslides.jar and does NOT swap the main artifact.
+                                That is what lets this module be both a CLI and a library.
+                            -->
+                            <finalName>${cli.name}</finalName>
+                            <!--
+                                MUST stay false. The default (true) rewrites the installed pom to
+                                strip every shaded dependency, leaving a library consumer able to
+                                resolve this artifact but not google-api-services-slides.
+                                Harmless for a pure CLI, fatal for the dual role.
+                            -->
+                            <createDependencyReducedPom>false</createDependencyReducedPom>
+                            <transformers>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <mainClass>${main.class}</mainClass>
+                                    <manifestEntries>
+                                        <Enable-Native-Access>ALL-UNNAMED</Enable-Native-Access>
+                                    </manifestEntries>
+                                </transformer>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                            </transformers>
+                            <filters>
+                                <filter>
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                        <exclude>module-info.class</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!--
+                Build the JRC AOT cache at package time rather than on the first agent call, so a
+                warm run emits no bootstrap noise on either stream. listperms is the right target:
+                it is the only verb needing no Google auth.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <version>3.1.0</version>
+                <executions>
+                    <execution>
+                        <id>warm-aot-cache</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <skip>${skip.aot.warmup}</skip>
+                            <target>
+                                <exec executable="${cli.name}.exe" failonerror="false" resultproperty="aot.warmup.result">
+                                    <arg value="listperms"/>
+                                </exec>
+                                <echo message="AOT warmup exit code: ${aot.warmup.result}"/>
+                            </target>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>
