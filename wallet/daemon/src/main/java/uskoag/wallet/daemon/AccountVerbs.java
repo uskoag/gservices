@@ -66,7 +66,7 @@ public final class AccountVerbs {
         var fresh = OAuthRunner.consent(req.account(), org, union, req.port() <= 0 ? 8888 : req.port());
         existing.ifPresent(core.keyring.data().credentials()::remove);
         core.keyring.data().credentials().add(fresh);
-        org.learn(req.account());
+        core.keyring.claimDomain(org, req.account());
         core.keyring.save();
         core.tokens.clear();
         return Json.of(Asks.Done.yes("consented: " + req.account() + " under org '" + org.id + "', "
@@ -109,7 +109,7 @@ public final class AccountVerbs {
                 tokenByAccount.put(account, found.refreshToken());
                 scopesByAccount.computeIfAbsent(account, k -> new LinkedHashSet<>()).addAll(found.scopes());
                 if (org.credentialsJson == null) adoptClient(org, found.credentialsJson());
-                org.learn(account);
+                core.keyring.claimDomain(org, account);
                 hit.add(account);
             }
             perProfile.put(profile, hit);

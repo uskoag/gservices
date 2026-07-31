@@ -156,13 +156,36 @@ public final class Keyring {
                 .findFirst();
     }
 
-    /** The org named outright, else the one whose domains claim this address, else the only one there is. */
+    /**
+     * The org named outright, else the one whose domains claim this address, else the only one there is.
+     *
+     * <p>A domain is a hint and not an identity, which the real inventory proves: two different OAuth
+     * clients both serve {@code uskfoundation.or.ke}. So when more than one org claims the domain this
+     * returns empty and forces an explicit choice, rather than guessing and minting the token under the
+     * wrong Cloud project — which would still succeed, and quietly consume the wrong project's
+     * unverified-app user cap.
+     */
     public Optional<OrgRecord> orgFor(String id, String email) {
         var named = org(id);
         if (named.isPresent()) return named;
-        var byDomain = data().orgs().stream().filter(o -> o.covers(email)).findFirst();
-        if (byDomain.isPresent()) return byDomain;
+        var byDomain = data().orgs().stream().filter(o -> o.covers(email)).toList();
+        if (byDomain.size() == 1) return Optional.of(byDomain.getFirst());
+        if (byDomain.size() > 1) return Optional.empty();
         return data().orgs().size() == 1 ? Optional.of(data().orgs().getFirst()) : Optional.empty();
+    }
+
+    /** Lets an org adopt an account's domain only while no other org already answers for it. */
+    public void claimDomain(OrgRecord org, String email) {
+        var at = email == null ? -1 : email.indexOf('@');
+        if (at < 0) return;
+        var domain = email.substring(at + 1).toLowerCase();
+        var taken = data().orgs().stream().anyMatch(o -> !o.id.equalsIgnoreCase(org.id) && o.covers(email));
+        if (taken) {
+            Log.info("not claiming " + domain + " for org '" + org.id
+                    + "': another org already answers for it, so this account needs --org");
+            return;
+        }
+        org.learn(email);
     }
 
     /** Bound to the passphrase and never written anywhere, which is the whole point of the parameter. */
