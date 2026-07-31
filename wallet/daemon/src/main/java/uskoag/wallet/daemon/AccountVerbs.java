@@ -195,6 +195,43 @@ public final class AccountVerbs {
                 "refreshToken", cred.refreshToken, "scopes", cred.scopes()));
     }
 
+    /** Editing the patterns is how a second domain arrives; one client routinely serves several. */
+    public String setDomains(Asks.OrgDomains req) throws IOException {
+        require();
+        var org = core.keyring.org(req.id())
+                .orElseThrow(() -> new IOException("no such org: " + req.id()));
+        var bad = new ArrayList<String>();
+        if (req.domains() != null) {
+            req.domains().forEach(d -> {
+                var why = uskoag.wallet.wire.DomainRule.problem(d);
+                if (why != null && !d.isBlank()) bad.add(d + " (" + why + ")");
+            });
+        }
+        if (!bad.isEmpty()) return Json.of(Asks.Done.no("not saved: " + String.join("; ", bad)));
+        org.setDomains(req.domains());
+        core.keyring.save();
+        return Json.of(Asks.Done.yes(org.id + " now answers for: "
+                + (org.domains().isEmpty() ? "(nothing - accounts must name --org)"
+                : String.join(", ", org.domains()))));
+    }
+
+    /**
+     * Removing an OAuth client leaves its accounts unable to refresh, so this refuses while any remain
+     * rather than producing tokens that fail at the next hour boundary with no obvious cause.
+     */
+    public String removeOrg(Asks.OrgRef req) throws IOException {
+        require();
+        var using = core.keyring.data().credentials().stream()
+                .filter(c -> req.id().equalsIgnoreCase(c.orgId)).map(c -> c.account).distinct().toList();
+        if (!using.isEmpty()) {
+            return Json.of(Asks.Done.no("still used by " + using
+                    + " - forget those accounts first, or their tokens would stop refreshing"));
+        }
+        var gone = core.keyring.data().orgs().removeIf(o -> o.id.equalsIgnoreCase(req.id()));
+        if (gone) core.keyring.save();
+        return Json.of(gone ? Asks.Done.yes("org '" + req.id() + "' removed") : Asks.Done.no("no such org"));
+    }
+
     public String forget(Asks.Forget req) throws IOException {
         require();
         var gone = core.keyring.data().credentials().removeIf(c -> c.account.equalsIgnoreCase(req.account()));

@@ -30,9 +30,11 @@ public final class MainWindow {
         var tabs = tabPane().attr(t -> {
             t.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
             t.getTabs().addAll(
+                    new Tab("Clients", OrgsPane.build(core)),
                     new Tab("Accounts", AccountsPane.build(core)),
                     new Tab("Permissions", PolicyPane.build(core)),
                     new Tab("Audit", AuditPane.build(core)));
+            t.getSelectionModel().select(1);
         });
 
         var root = borderPane()

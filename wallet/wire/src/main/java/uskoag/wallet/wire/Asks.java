@@ -35,6 +35,13 @@ public final class Asks {
     public record TokenRef(String account, String group) {
     }
 
+    public record OrgRef(String id) {
+    }
+
+    /** Replaces an org's domain patterns. Exact, {@code *.wildcard} or {@code re:} regex. */
+    public record OrgDomains(String id, List<String> domains) {
+    }
+
     /** Preference order among tokens that all satisfy a request; lower wins. */
     public record Reorder(String account, List<String> groups) {
     }

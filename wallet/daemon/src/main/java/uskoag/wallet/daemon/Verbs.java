@@ -42,6 +42,8 @@ public final class Verbs {
             case "orgs" -> Json.of(core.orgs());
             case "profiles" -> Json.of(Profiles.known());
             case "org.add" -> accounts.addOrg(Json.to(body, Asks.AddOrg.class));
+            case "org.domains" -> accounts.setDomains(Json.to(body, Asks.OrgDomains.class));
+            case "org.remove" -> accounts.removeOrg(Json.to(body, Asks.OrgRef.class));
             case "login" -> accounts.login(Json.to(body, Asks.Login.class));
             case "import" -> accounts.importOld(Json.to(body, Asks.Import.class));
             case "export" -> accounts.export(Json.to(body, Asks.Export.class));
