@@ -22,25 +22,31 @@ public final class TokenCache {
     private final Map<String, Live> cache = new ConcurrentHashMap<>();
     private final NetHttpTransport transport = new NetHttpTransport();
 
-    public String accessToken(CredentialRecord cred) throws IOException {
-        var key = cred.key();
+    /** The client half comes from the org, because that is where an OAuth client actually lives. */
+    public String accessToken(CredentialRecord cred, OrgRecord org) throws IOException {
+        var key = cred.account;
         var live = cache.get(key);
         if (live != null && live.usableAt(System.currentTimeMillis() + EARLY_MS)) return live.token();
         synchronized (this) {
             live = cache.get(key);
             if (live != null && live.usableAt(System.currentTimeMillis() + EARLY_MS)) return live.token();
-            var fresh = refresh(cred);
+            var fresh = refresh(cred, org);
             cache.put(key, fresh);
             return fresh.token();
         }
     }
 
-    private Live refresh(CredentialRecord cred) throws IOException {
+    private Live refresh(CredentialRecord cred, OrgRecord org) throws IOException {
         if (cred.refreshToken == null || cred.refreshToken.isBlank()) {
-            throw new IOException("no refresh token for " + cred.key() + " — run 'wallet login' for this account");
+            throw new IOException("no refresh token for " + cred.account
+                    + " - run: uskoag-walletcli login " + cred.account);
+        }
+        if (org == null || org.clientSecret == null) {
+            throw new IOException("no OAuth client stored for org '" + cred.orgId + "' - run:"
+                    + " uskoag-walletcli org add " + cred.orgId + " --file credentials.json");
         }
         var req = new GoogleRefreshTokenRequest(transport, GsonFactory.getDefaultInstance(),
-                cred.refreshToken, cred.clientId, cred.clientSecret);
+                cred.refreshToken, org.clientId, org.clientSecret);
         var res = req.execute();
         var ttl = res.getExpiresInSeconds() == null ? 3600 : res.getExpiresInSeconds();
         cred.lastUsed = System.currentTimeMillis();

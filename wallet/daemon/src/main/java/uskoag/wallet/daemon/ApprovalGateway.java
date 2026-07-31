@@ -14,6 +14,14 @@ public interface ApprovalGateway {
     /** Raise the unlock window because work arrived while the wallet was locked. */
     void unlockNeeded(String because);
 
+    /**
+     * A tool needs scopes this account has never granted. Answering yes opens a browser, so this is a
+     * question and not a notification.
+     */
+    default boolean consentNeeded(String account, java.util.List<String> missingScopes) {
+        return false;
+    }
+
     default boolean interactive() {
         return true;
     }

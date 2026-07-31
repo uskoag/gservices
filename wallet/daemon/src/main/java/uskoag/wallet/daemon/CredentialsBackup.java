@@ -26,15 +26,16 @@ public final class CredentialsBackup {
     private CredentialsBackup() {
     }
 
-    public static void save(String account, String profile, String json) {
+    /** One file per org, because that is what an OAuth client belongs to. */
+    public static void save(String orgId, String json) {
         try {
-            var dir = WalletPaths.credentialsBackup().resolve(safe(account));
+            var dir = WalletPaths.credentialsBackup();
             Files.createDirectories(dir);
-            var file = dir.resolve(safe(profile) + ".credentials.json");
+            var file = dir.resolve(safe(orgId) + ".credentials.json");
             Files.writeString(file, json);
             Restrict.toOwner(file);
         } catch (Exception e) {
-            Log.warn("could not back up credentials.json for " + account + " — " + e);
+            Log.warn("could not back up credentials.json for org " + orgId + " - " + e);
         }
     }
 
@@ -51,30 +52,34 @@ public final class CredentialsBackup {
         return out;
     }
 
-    public static String accountOf(Path file) {
-        return file.getParent().getFileName().toString();
-    }
-
-    public static String profileOf(Path file) {
+    public static String orgOf(Path file) {
         var name = file.getFileName().toString();
         return name.substring(0, name.length() - ".credentials.json".length());
     }
 
-    /** Re-populates a fresh keyring from the backups. The accounts still need consent afterwards. */
+    /**
+     * Re-populates a fresh keyring's orgs from the backups. The accounts still need consent afterwards
+     * — a refresh token is the one thing this cannot bring back, and should not be able to.
+     */
     public static int restoreInto(WalletCore core) throws IOException {
         var restored = 0;
         for (var file : all()) {
             try {
-                var rec = new CredentialRecord(accountOf(file), profileOf(file));
-                rec.credentialsJson = Files.readString(file);
-                var secrets = ClientJson.parse(rec.credentialsJson);
-                rec.clientId = secrets.get("client_id");
-                rec.clientSecret = secrets.get("client_secret");
-                core.keyring.find(rec.account, rec.profile).ifPresent(core.keyring.data().credentials()::remove);
-                core.keyring.data().credentials().add(rec);
+                var json = Files.readString(file);
+                var secrets = ClientJson.parse(json);
+                var id = orgOf(file);
+                var org = core.keyring.org(id).orElseGet(() -> {
+                    var fresh = new OrgRecord(id);
+                    core.keyring.data().orgs().add(fresh);
+                    return fresh;
+                });
+                org.label = id;
+                org.credentialsJson = json;
+                org.clientId = secrets.get("client_id");
+                org.clientSecret = secrets.get("client_secret");
                 restored++;
             } catch (Exception e) {
-                Log.warn("could not restore " + file + " — " + e);
+                Log.warn("could not restore " + file + " - " + e);
             }
         }
         if (restored > 0) core.keyring.save();

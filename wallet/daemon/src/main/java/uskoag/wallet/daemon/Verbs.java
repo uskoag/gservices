@@ -33,8 +33,9 @@ public final class Verbs {
             case "passwd" -> passwd(body);
             case "access" -> Json.of(core.access(Json.to(body, AccessRequest.class)));
             case "accounts" -> Json.of(core.accounts());
+            case "orgs" -> Json.of(core.orgs());
             case "profiles" -> Json.of(Profiles.known());
-            case "addcredentials" -> accounts.add(Json.to(body, Asks.AddCredentials.class));
+            case "org.add" -> accounts.addOrg(Json.to(body, Asks.AddOrg.class));
             case "login" -> accounts.login(Json.to(body, Asks.Login.class));
             case "import" -> accounts.importOld(Json.to(body, Asks.Import.class));
             case "export" -> accounts.export(Json.to(body, Asks.Export.class));
@@ -42,8 +43,7 @@ public final class Verbs {
             case "policy.list", "policy.check", "policy.allow", "policy.revoke", "policy.clear" ->
                     policy.dispatch(verb, body);
             case "audit" -> audit(body);
-            case "backups" -> Json.of(CredentialsBackup.all().stream()
-                    .map(p -> CredentialsBackup.accountOf(p) + " / " + CredentialsBackup.profileOf(p)).toList());
+            case "backups" -> Json.of(CredentialsBackup.all().stream().map(CredentialsBackup::orgOf).toList());
             case "purgebackups" -> Json.of(Asks.Done.yes(CredentialsBackup.purge()
                     + " backed-up credentials.json file(s) deleted"));
             case "reset" -> Json.of(Asks.Done.yes(Recovery.reset(core)
@@ -68,7 +68,8 @@ public final class Verbs {
         var chars = req.passphrase().toCharArray();
         try {
             core.unlock(chars);
-            return Json.of(Asks.Done.yes(core.keyring.data().credentials().size() + " credential(s) available"));
+            return Json.of(Asks.Done.yes(core.keyring.data().orgs().size() + " org(s), "
+                    + core.keyring.data().credentials().size() + " account(s) available"));
         } catch (Exception e) {
             return Json.of(Asks.Done.no(String.valueOf(e.getMessage())));
         } finally {

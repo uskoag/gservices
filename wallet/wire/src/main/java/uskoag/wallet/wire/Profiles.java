@@ -39,6 +39,20 @@ public final class Profiles {
         return SCOPES.keySet().stream().sorted().toList();
     }
 
+    /**
+     * Every scope every known tool asks for, deduplicated.
+     *
+     * <p>This is what a plain {@code login} requests, and it is the deliberate default: consenting once
+     * for everything is one browser round trip, whereas consenting per tool means a round trip each
+     * time you first use one — and, with the old store, a silent 403 when the second tool reused the
+     * first one's narrower token. Anyone who wants less can pass an explicit scope list.
+     */
+    public static List<String> allScopes() {
+        var all = new java.util.LinkedHashSet<String>();
+        known().forEach(p -> all.addAll(SCOPES.get(p)));
+        return List.copyOf(all);
+    }
+
     /** Where this tool's {@code <email>/tokens_<md5>} directories live today. */
     public static Path legacyRoot(String profile) {
         var home = Path.of(System.getProperty("user.home"), "uskoag");

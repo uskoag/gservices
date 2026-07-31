@@ -48,6 +48,9 @@ public final class WalletCli {
         return switch (verb) {
             case "status" -> out(client.callRaw("status", Map.of()));
             case "accounts" -> out(client.callRaw("accounts", Map.of()));
+            case "orgs" -> out(client.callRaw("orgs", Map.of()));
+            case "org" -> "add".equals(a.at(1)) ? AccountCommands.addOrg(client, a)
+                    : out(client.callRaw("orgs", Map.of()));
             case "profiles" -> out(client.callRaw("profiles", Map.of()));
             case "audit" -> out(client.callRaw("audit", new Asks.Recent(a.num("limit", 100))));
             case "lock" -> out(client.callRaw("lock", Map.of()));
@@ -57,7 +60,6 @@ public final class WalletCli {
             case "shutdown" -> out(client.callRaw("shutdown", Map.of()));
             case "unlock" -> unlock(client, a);
             case "passwd" -> passwd(client, a);
-            case "add" -> AccountCommands.add(client, a);
             case "login" -> AccountCommands.login(client, a);
             case "import" -> AccountCommands.importOld(client, a);
             case "export" -> AccountCommands.export(client, a);
@@ -119,12 +121,6 @@ public final class WalletCli {
         } catch (RuntimeException e) {
             return 0;
         }
-    }
-
-    static String profileOf(Args a) {
-        var p = a.get("profile", null);
-        if (p == null) throw new IllegalArgumentException("--profile is required (" + String.join(", ", Profiles.known()) + ")");
-        return p;
     }
 
     private WalletCli() {

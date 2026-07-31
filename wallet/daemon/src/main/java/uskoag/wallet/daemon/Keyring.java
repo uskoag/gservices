@@ -133,10 +133,25 @@ public final class Keyring {
         return new SecretKeySpec(Base64.getDecoder().decode(data().auditKeyB64), "AES");
     }
 
-    public Optional<CredentialRecord> find(String account, String profile) {
-        return data().credentials().stream()
-                .filter(c -> c.account.equalsIgnoreCase(account) && c.profile.equalsIgnoreCase(profile))
+    public Optional<CredentialRecord> find(String account) {
+        return account == null ? Optional.empty() : data().credentials().stream()
+                .filter(c -> c.account.equalsIgnoreCase(account))
                 .findFirst();
+    }
+
+    public Optional<OrgRecord> org(String id) {
+        return id == null ? Optional.empty() : data().orgs().stream()
+                .filter(o -> o.id.equalsIgnoreCase(id))
+                .findFirst();
+    }
+
+    /** The org named outright, else the one whose domains claim this address, else the only one there is. */
+    public Optional<OrgRecord> orgFor(String id, String email) {
+        var named = org(id);
+        if (named.isPresent()) return named;
+        var byDomain = data().orgs().stream().filter(o -> o.covers(email)).findFirst();
+        if (byDomain.isPresent()) return byDomain;
+        return data().orgs().size() == 1 ? Optional.of(data().orgs().getFirst()) : Optional.empty();
     }
 
     /** Bound to the passphrase and never written anywhere, which is the whole point of the parameter. */

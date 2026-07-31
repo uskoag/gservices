@@ -6,52 +6,80 @@ import uskoag.wallet.wire.WalletClient;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
-/** Adding, consenting, migrating and exporting accounts from a terminal. */
+/** Orgs, consent, migration and export from a terminal. */
 public final class AccountCommands {
 
     private AccountCommands() {
     }
 
-    public static int add(WalletClient client, Args a) throws Exception {
-        var email = a.at(1);
+    /**
+     * {@code org add <id> --file credentials.json [--domains a.org,b.org] [--label "..."]}
+     *
+     * <p>Per org, not per tool and not per account: a credentials.json is a Cloud project's OAuth
+     * client. One per org is also what an unverified app leaves available, given the hundred-user cap
+     * and a Workspace admin's power to refuse a foreign client ID.
+     */
+    public static int addOrg(WalletClient client, Args a) throws Exception {
+        var id = a.at(2);
         var file = a.get("file", null);
-        if (email == null || file == null) {
-            System.err.println("usage: uskoag-walletcli add <email> --profile <p> --file <credentials.json>");
+        if (id == null || file == null) {
+            System.err.println("usage: uskoag-walletcli org add <id> --file <credentials.json>"
+                    + " [--domains a.org,b.org] [--label \"...\"]");
             return 1;
         }
-        var json = Files.readString(Path.of(file));
-        return WalletCli.out(client.callRaw("addcredentials",
-                new Asks.AddCredentials(email, WalletCli.profileOf(a), json)));
+        return WalletCli.out(client.callRaw("org.add", new Asks.AddOrg(id, a.get("label", id),
+                Files.readString(Path.of(file)), a.list("domains"))));
     }
 
+    /**
+     * Consent for one account, requesting every tool's scopes at once by default.
+     *
+     * <p>One browser round trip instead of one per tool, and it sidesteps the trap in the old store:
+     * tokens were keyed by app-key and never by scopes, so the second tool silently reused the first
+     * one's narrower token and failed later with an opaque 403.
+     */
     public static int login(WalletClient client, Args a) throws Exception {
         var email = a.at(1);
         if (email == null) {
-            System.err.println("usage: uskoag-walletcli login <email> --profile <p>");
+            System.err.println("usage: uskoag-walletcli login <email> [--org <id>] [--profiles gsheets,gmail]");
             return 1;
         }
-        var profile = WalletCli.profileOf(a);
+        var profiles = a.list("profiles");
+        var scopes = profiles.isEmpty() ? null
+                : profiles.stream().flatMap(p -> Profiles.scopes(p).stream()).distinct().toList();
         System.err.println("A browser window will open for consent. The wallet keeps what comes back.");
         return WalletCli.out(client.callRaw("login",
-                new Asks.Login(email, profile, Profiles.scopes(profile), a.num("port", 8888))));
+                new Asks.Login(email, a.get("org", null), scopes, a.num("port", 8888))));
     }
 
     /**
      * The migration that replaces rotation: one old app-key, typed once and never passed as a flag,
-     * moves every account that key can decrypt into the keyring without a single re-consent.
+     * moves every account it can decrypt into the keyring without a single re-consent.
+     *
+     * <p>Every profile by default, because one account's tokens are scattered across one directory per
+     * tool and they all belong to the same account. They merge into one record with the union of
+     * whatever each had granted.
      */
     public static int importOld(WalletClient client, Args a) throws Exception {
-        var profile = WalletCli.profileOf(a);
+        var org = a.get("org", null);
+        if (org == null) {
+            System.err.println("usage: uskoag-walletcli import --org <id> [--profiles gsheets,gmail]"
+                    + " [--accounts a@x,b@x] [--root <dir>] [--delete-old]");
+            System.err.println("--profiles defaults to all of: " + String.join(", ", Profiles.known()));
+            return 1;
+        }
         var appKey = a.secret("old app-key to import with");
         if (appKey == null) {
             System.err.println("No console available. The old app-key is a secret and is never taken as a flag.");
             return 3;
         }
-        var root = a.get("root", Profiles.legacyRoot(profile).toString());
-        System.err.println("importing from " + root);
-        var reply = client.callRaw("import", new Asks.Import(root, appKey, profile,
-                Profiles.scopes(profile), a.list("accounts"), a.has("delete-old")));
+        var profiles = a.list("profiles").isEmpty() ? Profiles.known() : a.list("profiles");
+        System.err.println("scanning " + profiles.size() + " tool store(s): " + String.join(", ", profiles));
+
+        var reply = client.callRaw("import", new Asks.Import(org, appKey, profiles,
+                a.list("accounts"), a.get("root", null), a.has("delete-old")));
         System.out.println(reply);
         if (a.has("delete-old")) {
             System.err.println("Old token stores deleted. That app-key now decrypts nothing,"
@@ -66,23 +94,26 @@ public final class AccountCommands {
     public static int export(WalletClient client, Args a) throws Exception {
         var email = a.at(1);
         if (email == null) {
-            System.err.println("usage: uskoag-walletcli export <email> --profile <p> [--raw]");
+            System.err.println("usage: uskoag-walletcli export <email> [--raw]");
             return 1;
         }
         if (a.has("raw")) {
-            System.err.println("EXPORTING A RAW CREDENTIAL — refresh token and client secret."
+            System.err.println("EXPORTING A RAW CREDENTIAL - refresh token and client secret."
                     + " This is recorded in the audit.");
         }
-        return WalletCli.out(client.callRaw("export",
-                new Asks.Export(email, WalletCli.profileOf(a), a.has("raw"))));
+        return WalletCli.out(client.callRaw("export", new Asks.Export(email, a.has("raw"))));
     }
 
     public static int forget(WalletClient client, Args a) throws Exception {
         var email = a.at(1);
         if (email == null) {
-            System.err.println("usage: uskoag-walletcli forget <email> --profile <p>");
+            System.err.println("usage: uskoag-walletcli forget <email>");
             return 1;
         }
-        return WalletCli.out(client.callRaw("forget", new Asks.Forget(email, WalletCli.profileOf(a))));
+        return WalletCli.out(client.callRaw("forget", new Asks.Forget(email)));
+    }
+
+    static List<String> nothing() {
+        return List.of();
     }
 }

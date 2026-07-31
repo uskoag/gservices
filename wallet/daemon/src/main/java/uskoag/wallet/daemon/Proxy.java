@@ -74,14 +74,13 @@ public final class Proxy {
                 return;
             }
 
-            var cred = core.keyring.find(grant.account(), grant.profile())
-                    .orElseGet(() -> core.keyring.data().credentials().stream()
-                            .filter(c -> c.account.equalsIgnoreCase(grant.account())).findFirst().orElse(null));
+            var cred = core.keyring.find(grant.account()).orElse(null);
             if (cred == null) {
-                fail(x, 401, "the credential behind this grant is gone — the wallet may have been locked");
+                fail(x, 401, "the credential behind this grant is gone - the wallet may have been locked");
                 return;
             }
-            Forward.relay(x, api, path, query, body, core.tokens.accessToken(cred), core.proxyPortValue());
+            var org = core.keyring.org(cred.orgId).orElse(null);
+            Forward.relay(x, api, path, query, body, core.tokens.accessToken(cred, org), core.proxyPortValue());
         } catch (Exception e) {
             Log.error("proxy failure on " + x.getRequestURI(), e);
             try {

@@ -17,20 +17,30 @@ public final class Asks {
     public record Passwd(String current, String fresh) {
     }
 
-    public record AddCredentials(String account, String profile, String credentialsJson) {
+    /** One OAuth client for one organisation. Domains let later accounts skip naming the org at all. */
+    public record AddOrg(String id, String label, String credentialsJson, List<String> domains) {
     }
 
-    public record Login(String account, String profile, List<String> scopes, int port) {
+    /**
+     * Consent for one account. {@code scopes} is what this run needs; the wallet requests the union of
+     * that and everything already granted, so widening never revokes what another tool relies on.
+     */
+    public record Login(String account, String org, List<String> scopes, int port) {
     }
 
-    public record Import(String root, String appKey, String profile, List<String> scopes,
-                         List<String> accounts, boolean deleteOld) {
+    /**
+     * Migrate existing {@code tokens_<md5>} stores. {@code profiles} is a multi-select and defaults to
+     * every known tool, because one account's tokens are scattered across several tool directories and
+     * picking them off one at a time was the wrong shape.
+     */
+    public record Import(String org, String appKey, List<String> profiles, List<String> accounts,
+                         String root, boolean deleteOld) {
     }
 
-    public record Export(String account, String profile, boolean raw) {
+    public record Export(String account, boolean raw) {
     }
 
-    public record Forget(String account, String profile) {
+    public record Forget(String account) {
     }
 
     public record Recent(int limit) {
