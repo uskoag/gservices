@@ -36,6 +36,18 @@ public final class Credentials {
         return new AppKeyCredentialSource(appKeyFallback).access(spec);
     }
 
+    /**
+     * For background work: would an access right now proceed on its own?
+     *
+     * <p>False when nothing beyond the app-key default is installed, because that route ends at a
+     * console prompt nobody is there to answer, and false when the installed source is present but not
+     * ready — a locked wallet. Unattended callers gate on this and log plainly; interactive ones do not
+     * consult it at all.
+     */
+    public static boolean ready() {
+        return discovered().map(CredentialSource::ready).orElse(false);
+    }
+
     /** For a {@code status}-style verb: which route this invocation would take, without taking it. */
     public static String describeRoute() {
         return discovered().map(CredentialSource::name).orElse("app-key (no wallet installed)");

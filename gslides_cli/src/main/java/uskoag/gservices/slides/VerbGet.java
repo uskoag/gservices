@@ -13,7 +13,6 @@ public final class VerbGet {
         var pageRef = Args.pos(a);
         var elemRef = Args.pos(a);
         Args.noneLeft(a, "get");
-        GSlidesConfig.require(deck, "read");
 
         if (pageRef == null) { deckInfo(deck, format); return; }
 

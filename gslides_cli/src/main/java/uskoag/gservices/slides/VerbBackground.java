@@ -21,7 +21,6 @@ public final class VerbBackground {
 
         var given = (color != null ? 1 : 0) + (image != null ? 1 : 0) + (clear ? 1 : 0);
         if (given != 1) Out.die("background: pass exactly one of --color HEX, --image <path|url>, --clear");
-        GSlidesConfig.require(deck, "write");
 
         var pageId = Deck.pageId(deck, pageRef);
         var fill = new PageBackgroundFill();

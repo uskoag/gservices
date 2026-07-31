@@ -32,6 +32,21 @@
             <artifactId>uskoag-gservices-slides</artifactId>
             <version>${project.version}</version>
         </dependency>
+
+        <!--
+          The wallet client, and only the client: a thin protocol jar with no engine, no ArcadeDB and no
+          JavaFX behind it. It contributes a CredentialSource through ServiceLoader, so this binary uses
+          a wallet when one is installed and falls back to the console app-key prompt when none is.
+
+          Note the direction. The gservices *libraries* stay wallet-free — anyone embedding
+          uskoag-gservices-slides is untouched by this. Only the end-user binary, itself an application,
+          carries it. Build order on a clean machine: gservices libraries, then uskoag/wallet, then this.
+        -->
+        <dependency>
+            <groupId>io.github.uskoag</groupId>
+            <artifactId>uskoag-wallet-wire</artifactId>
+            <version>1.0</version>
+        </dependency>
         <dependency>
             <groupId>io.github.uskoag</groupId>
             <artifactId>uskoag-gservices-oauth</artifactId>
@@ -118,8 +133,9 @@
 
             <!--
                 Build the JRC AOT cache at package time rather than on the first agent call, so a
-                warm run emits no bootstrap noise on either stream. listperms is the right target:
-                it is the only verb needing no Google auth.
+                warm run emits no bootstrap noise on either stream. The help flag is the right target:
+                it reaches no network and, unlike the old listperms, is not a verb that now redirects
+                to the wallet and exits non-zero.
             -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -136,7 +152,7 @@
                             <skip>${skip.aot.warmup}</skip>
                             <target>
                                 <exec executable="${cli.name}.exe" failonerror="false" resultproperty="aot.warmup.result">
-                                    <arg value="listperms"/>
+                                    <arg value="--help"/>
                                 </exec>
                                 <echo message="AOT warmup exit code: ${aot.warmup.result}"/>
                             </target>

@@ -354,28 +354,23 @@ public class GmailCli {
     }
 
     /**
-     * Shared OAuth descriptor for every command. Scopes: {@code gmail.modify} (read + label CRUD +
-     * apply/remove labels on messages/threads; no permanent delete) and {@code gmail.compose} (drafts).
-     * No {@code gmail.send} — sending is still not exposed. {@code modify} is a superset of
-     * {@code readonly}, so it also covers all the read/search/read-batch paths.
+     * Re-consent has moved to the wallet, and this redirects rather than disappearing.
+     *
+     * <p>It used to delete this tool's own stored token so the next {@link #connect} would run a fresh
+     * browser flow — which required building an {@link OAuthToken} with an app-key, one of the last
+     * three places in this file that still did. The wallet holds the token now, so the wallet is where
+     * it is dropped and re-granted, and doing it from here could only ever have deleted a legacy store
+     * nothing reads any more.
      */
-    private static OAuthToken oauthFor(String appKey, String email) {
-        return OAuthToken.oauthToken(APP_NAME, appKey, GmailScopes.GMAIL_MODIFY, GmailScopes.GMAIL_COMPOSE)
-                .allCredsDir(CREDS_BASE)
-                .credential(email);
-    }
-
-    /**
-     * Forgets the stored token for this account+app-key so the subsequent {@link #connect} runs a fresh
-     * browser consent. Needed once after the scope upgrade to {@code gmail.modify}: a previously stored
-     * read-only token is reused silently by the OAuth library and would 403 on any label write.
-     */
-    private static void reauth(Args a) throws IOException {
+    private static void reauth(Args a) {
         String email = a.get("email");
-        if (email == null || email.isBlank()) { logError("Missing required --email/-e <email>"); System.exit(2); }
-        String appKey = resolveAppKey(a);
-        boolean deleted = oauthFor(appKey, email).deleteStoredCredential();
-        logInfo(deleted ? "Cleared stored token; a fresh consent will be requested." : "No stored token found; running consent.");
+        var who = email == null || email.isBlank() ? "<email>" : email;
+        logError("re-consent has moved to the USK OAG GServices Wallet, which holds every refresh token"
+                + " on this machine.");
+        logError("Run instead:");
+        logError("  uskoag-walletcli login " + who + "        (re-grant, widening scopes if needed)");
+        logError("  uskoag-walletcli forget " + who + "       (drop the stored token first)");
+        System.exit(2);
     }
 
     /**
@@ -416,23 +411,6 @@ public class GmailCli {
         }
     }
 
-    /**
-     * App-key resolution used to start with the {@code --app-key/-k} flag. It no longer does, and the
-     * flag is gone: argv is readable by any process on Windows through {@code Win32_Process.CommandLine},
-     * and it lands in PSReadLine history and in AI transcripts. That was the accidental-disclosure path
-     * this whole change exists to close, so there is deliberately nothing to fall back to.
-     *
-     * <p>The order is now: an installed wallet, then a hidden console prompt, then a dialog, then a
-     * clear failure. See {@link Credentials}.
-     */
-    private static String resolveAppKey(Args a) {
-        var key = AppKeyPrompt.ask(APP_NAME);
-        if (key != null) return key;
-        logError("No app-key available and no wallet running. Start uskoag-wallet, or run from a console.");
-        System.exit(2);
-        return null; // unreachable
-    }
-
     // ---- commands -----------------------------------------------------------
 
     private static void cmdProfile() throws IOException {
@@ -453,13 +431,16 @@ public class GmailCli {
 
     /**
      * Lists the per-email accounts configured under {@link #CREDS_BASE}: their OAuth client type and
-     * how many encrypted token-stores exist. Login state can't be known from the filesystem alone
-     * (tokens are encrypted per app-key), so {@code --probe} calls {@code getProfile} for each to
-     * verify it live — without ever opening a browser.
+     * how many token-stores exist. {@code --probe} calls {@code getProfile} for each to verify it live,
+     * without ever opening a browser.
+     *
+     * <p>The {@code tokenStores} count is now a legacy reading and is labelled as one. Those
+     * directories are the old per-app-key stores; the credential that actually answers a call lives in
+     * the wallet, so a count of zero here says nothing about whether the account works. Which is
+     * exactly why {@code --probe} exists and why it is worth more than it used to be.
      */
     private static void cmdListProfiles(Args a) throws Exception {
         boolean probe = a.has("probe");
-        String appKey = probe ? resolveAppKey(a) : null;
 
         List<Path> dirs = List.of();
         if (Files.isDirectory(CREDS_BASE)) {
@@ -487,7 +468,7 @@ public class GmailCli {
             m.put("hasCredentials", hasCreds);
             m.put("clientType", hasCreds ? (type == null ? "unreadable" : type) : "none");
             m.put("tokenStores", tokenStores);
-            if (probe) probeAccount(m, email, appKey, hasCreds, type);
+            if (probe) probeAccount(m, email, hasCreds, type);
             out.add(m);
         }
 
@@ -504,7 +485,7 @@ public class GmailCli {
             System.out.println("    credentials : " + (Boolean.TRUE.equals(m.get("hasCredentials"))
                     ? "yes (" + ct + ("web".equals(ct) ? " - WRONG type; needs Desktop app" : "") + ")"
                     : "no"));
-            System.out.println("    token-stores: " + m.get("tokenStores")
+            System.out.println("    token-stores: " + m.get("tokenStores") + " (legacy on-disk stores)"
                     + (probe ? "" : "   (login state unverified - re-run with --probe)"));
             if (probe) {
                 String line = String.valueOf(m.getOrDefault("status", "?"));
@@ -517,19 +498,34 @@ public class GmailCli {
         logInfo(out.size() + " account(s)");
     }
 
-    /** Probes one account's live login state WITHOUT triggering a browser flow; writes status fields into {@code m}. */
-    private static void probeAccount(Map<String, Object> m, String email, String appKey, boolean hasCreds, String type) {
-        if (!hasCreds) { m.put("status", "no-credentials"); return; }
-        if (!"installed".equals(type)) { m.put("status", "skipped (not a Desktop-app client)"); return; }
+    /**
+     * Probes one account's live login state; writes status fields into {@code m}.
+     *
+     * <p>Goes through the same credential seam as a real command, which is what makes the answer worth
+     * anything: it verifies the route that will actually be used rather than the presence of a file.
+     * It never opens a browser — a {@code getProfile} against an account the wallet holds is a plain
+     * read, and one it does not hold comes back as a refusal with the reason attached.
+     *
+     * <p>A failure here is recorded against the account and the sweep continues. The whole purpose of
+     * the verb is to show several accounts side by side, and dying on the first unauthorised one would
+     * hide the state of every account after it.
+     */
+    private static void probeAccount(Map<String, Object> m, String email, boolean hasCreds, String type) {
+        if (hasCreds && !"installed".equals(type)) {
+            m.put("status", "skipped (not a Desktop-app client)");
+            return;
+        }
         try {
-            Gmail g = GmailService.gmailIfAuthorized(oauthFor(appKey, email));
-            if (g == null) { m.put("status", "not-logged-in (no token for this app-key)"); return; }
+            var spec = AccessSpec.of("gmail", PROFILE, APP_NAME, email,
+                            java.util.List.of(GmailScopes.GMAIL_MODIFY, GmailScopes.GMAIL_COMPOSE))
+                    .legacyRoot(CREDS_BASE.toString());
+            Gmail g = GmailService.gmail(Credentials.access(spec), APP_NAME);
             Profile p = g.users().getProfile(USER).execute();
             m.put("status", "ok");
             m.put("messagesTotal", p.getMessagesTotal());
             m.put("threadsTotal", p.getThreadsTotal());
         } catch (Exception e) {
-            m.put("status", "error");
+            m.put("status", "not reachable");
             m.put("error", e.getMessage() == null ? e.toString() : e.getMessage());
         }
     }

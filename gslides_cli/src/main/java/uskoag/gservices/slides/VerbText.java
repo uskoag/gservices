@@ -19,7 +19,6 @@ public final class VerbText {
         var deck = Deck.presId(Args.req(a, "<deck>"));
         var elem = Args.req(a, "<elem>");
         if (a.isEmpty()) Out.die("text: needs at least one op (--set= --set-html= --replace= --replace-all= --delete=)");
-        GSlidesConfig.require(deck, "write");
 
         for (var op : new ArrayList<>(a)) applyOp(deck, elem, op);
         Out.success("text updated on " + elem);

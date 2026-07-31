@@ -28,7 +28,6 @@ public final class VerbPara {
                 && indent == null && above == null && below == null)
             Out.die("para: nothing to change (--align --bullets --line-spacing --indent --space-above --space-below)");
 
-        GSlidesConfig.require(deck, "write");
         var r = target.resolve(deck);
         var reqs = new ArrayList<Request>();
 

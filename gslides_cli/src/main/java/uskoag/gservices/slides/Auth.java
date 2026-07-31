@@ -1,91 +1,108 @@
 package uskoag.gservices.slides;
 
-import com.google.api.client.auth.oauth2.Credential;
-import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport;
 import com.google.api.services.drive.Drive;
 import com.google.api.services.drive.DriveScopes;
 import com.google.api.services.slides.v1.Slides;
 import com.google.api.services.slides.v1.SlidesScopes;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
+import java.util.List;
+import uskoag.gservices.AccessSpec;
+import uskoag.gservices.Credentials;
 import uskoag.gservices.DriveService;
-import uskoag.gservices.OAuthToken;
+import uskoag.gservices.ServiceAccess;
 import uskoag.gservices.SlidesService;
 
 /**
- * Every verb authorises with the SAME union of scopes, deliberately.
+ * Where this tool gets its clients, and it no longer gets a credential with them.
  *
- * OAuthToken keys its token directory by md5(appKey) alone and never by scopes, and the
- * Google client library reuses a stored token without re-prompting even after the
- * requested scopes grow. Per-verb scopes would therefore mean the first verb ever run
- * wins, and every wider verb then fails with an opaque 403. One union avoids that.
+ * <p>What was here before was the whole problem in one class: a hardcoded {@code DEFAULT_APP_KEY}
+ * compiled into the jar, which meant the AES passphrase for the token store shipped with the thing it
+ * protected. Anyone holding the binary held the key. It also never consulted the credential seam at
+ * all, so installing a wallet changed nothing for gslides while every other tool moved across.
+ *
+ * <p>Three separate requests are made rather than one, deliberately, and for the same reason the broker
+ * exists. Editing a deck, rendering it and uploading an image want three different scopes, and asking
+ * per API lets the narrowest token that covers each one serve it — an export cannot be served by a
+ * token that could rewrite the deck it is rendering. The old union asked for everything once and then
+ * used it for everything.
+ *
+ * <p>Each is resolved lazily and cached, so a command that only edits never asks for the others.
  */
 public final class Auth {
 
-    static final String
-            APP_NAME = "GSlidesCli-v1.0",
-            DEFAULT_APP_KEY = "uskoag-gslides-cli-key-2026";
+    static final String APP_NAME = "uskoag-gslides";
 
-    static final Path
-            OWN_CREDS = Paths.get(System.getProperty("user.home"), "uskoag", "gservices", "gslides_cli"),
-            SHARED_CREDS = Paths.get(System.getProperty("user.home"), "uskoag", "gdrive_gdocs_auth");
+    /** Compiled-in credential name. Not a secret, and it unlocks nothing — unlike what it replaced. */
+    static final String PROFILE = "gslides";
 
-    static String appKey = DEFAULT_APP_KEY, email;
+    static String email;
 
     private static Slides slidesSvc;
     private static Drive driveSvc;
+    private static ServiceAccess exportAccess;
 
     private Auth() {}
 
-    static OAuthToken token() {
-        var t = OAuthToken.oauthToken(APP_NAME, appKey,
-                        SlidesScopes.PRESENTATIONS, DriveScopes.DRIVE_READONLY, DriveScopes.DRIVE_FILE)
-                .allCredsDir(credsDir());
-        return email != null ? t.credential(email) : t.defaultCredential();
+    /**
+     * Refuses an absent account rather than picking one. With several accounts stored, acting as the
+     * wrong one writes to the wrong organisation's deck and nothing in the output would say so.
+     */
+    private static String email() {
+        if (email == null || email.isBlank()) {
+            Out.die("--email/-e <account> is required; " + APP_NAME + " has no default account");
+        }
+        return email;
+    }
+
+    private static ServiceAccess access(String api, List<String> scopes) throws Exception {
+        return Credentials.access(AccessSpec.of(api, PROFILE, APP_NAME, email(), scopes));
     }
 
     static Slides slides() throws Exception {
-        if (slidesSvc == null) slidesSvc = SlidesService.slides(token());
+        if (slidesSvc == null) {
+            slidesSvc = SlidesService.slides(
+                    access("slides", List.of(SlidesScopes.PRESENTATIONS)), APP_NAME);
+        }
         return slidesSvc;
     }
 
+    /**
+     * Drive, for uploading a local image and for copying a deck.
+     *
+     * <p>Both scopes are asked for because the two uses genuinely differ — an upload is
+     * {@code drive.file}, reading a deck in order to copy it is {@code drive.readonly} — and which one
+     * serves any individual call is settled at that call rather than here.
+     */
     static Drive drive() throws Exception {
-        if (driveSvc == null) driveSvc = DriveService.drive(token());
+        if (driveSvc == null) {
+            driveSvc = DriveService.drive(
+                    access("drive", List.of(DriveScopes.DRIVE_READONLY, DriveScopes.DRIVE_FILE)),
+                    APP_NAME);
+        }
         return driveSvc;
     }
 
-    /** The export endpoint is plain HTTP with a bearer token, not an API client call. */
-    static Credential credential() throws Exception {
-        return token().credentials(GoogleNetHttpTransport.newTrustedTransport());
-    }
-
-    static void reauth() throws Exception {
-        var gone = token().deleteStoredCredential();
-        Out.success(gone ? "stored token deleted; next call will re-prompt for consent"
-                         : "no stored token for this app-key");
-    }
-
     /**
-     * Prefer the per-tool directory, as uskoag-sheetcli and uskoag-gmailcli do, but fall
-     * back to the shared one so an account already set up for the other google tools
-     * needs no second credentials.json.
+     * The full-resolution PNG export, which is not an API call at all.
+     *
+     * <p>Slides offers no API for it; the only route is an undocumented endpoint on
+     * {@code docs.google.com} taking a plain bearer header. That used to mean this tool held a real
+     * Google access token in its own process, which is the one thing the design does not permit. The
+     * wallet now fronts that host as well, so what comes back here is the same loopback handle as
+     * everywhere else and the render is classified and recorded like any other read.
+     *
+     * @return the root URL to build the export request against, and the initializer that authorises it
      */
-    private static Path credsDir() {
-        if (usable(OWN_CREDS)) { Out.info("credentials dir: " + OWN_CREDS); return OWN_CREDS; }
-        if (usable(SHARED_CREDS)) { Out.info("credentials dir (shared fallback): " + SHARED_CREDS); return SHARED_CREDS; }
-        Out.die("No credentials.json found under " + OWN_CREDS + " or " + SHARED_CREDS
-                + " -- place a Desktop-app OAuth client at <dir>\\<your-email>\\credentials.json");
-        return null;
+    static ServiceAccess exportAccess() throws Exception {
+        if (exportAccess == null) {
+            exportAccess = access("slidesexport", List.of(DriveScopes.DRIVE_READONLY));
+        }
+        return exportAccess;
     }
 
-    private static boolean usable(Path base) {
-        if (!Files.isDirectory(base)) return false;
-        if (email != null) return Files.exists(base.resolve(email).resolve("credentials.json"));
-        try (var s = Files.list(base)) {
-            return s.filter(Files::isDirectory).anyMatch(d -> Files.exists(d.resolve("credentials.json")));
-        } catch (Exception e) {
-            return false;
-        }
+    static void reauth() {
+        var who = email == null || email.isBlank() ? "<email>" : email;
+        Out.die("re-consent has moved to the USK OAG GServices Wallet, which holds every refresh token on"
+                + " this machine.\n  Run instead:            uskoag-walletcli login " + who
+                + "\n  To drop a stored token: uskoag-walletcli forget " + who);
     }
 }

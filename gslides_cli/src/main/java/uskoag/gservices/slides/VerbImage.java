@@ -23,7 +23,6 @@ public final class VerbImage {
         var elem = Args.req(a, "<elem>");
         Args.noneLeft(a, "image");
         if (src == null) Out.die("image: --src <localPath|url> is required");
-        GSlidesConfig.require(deck, "write");
 
         var pres = Deck.get(deck, "slides(objectId,pageElements(objectId,image(sourceUrl)))");
         var el = Deck.element(pres, elem);

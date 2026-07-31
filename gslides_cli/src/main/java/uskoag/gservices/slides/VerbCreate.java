@@ -33,7 +33,6 @@ public final class VerbCreate {
         var deck = Deck.presId(Args.req(a, "<deck>"));
         var pageRef = Args.req(a, "<page>");
         Args.noneLeft(a, "create " + kind);
-        GSlidesConfig.require(deck, "write");
 
         var pres = Deck.get(deck, "pageSize,slides(objectId)");
         Geom.adoptPageSize(pres.getPageSize());

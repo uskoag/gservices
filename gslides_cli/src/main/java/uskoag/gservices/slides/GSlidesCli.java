@@ -20,15 +20,18 @@ public class GSlidesCli {
         Api.dryRun = Args.flag(a, "--dry-run", "--dry");
         var wantsHelp = Args.flag(a, "--help", "-h");
         Auth.email = Args.val(a, "--email", "-e");
-        var key = Args.val(a, "--key", "-k");
-        if (key != null) Auth.appKey = key;
+        // --key/-k is still consumed, and still ignored. There is no app-key any more; a script that
+        // passes one should not die on an unrecognised flag, but neither should it be led to believe
+        // the value did anything.
+        if (Args.val(a, "--key", "-k") != null) {
+            Out.info("--key is ignored: this tool holds no credential and the wallet decides access");
+        }
 
         if (wantsHelp) { GSlidesHelp.print(System.out); return; }
         if (a.isEmpty()) { GSlidesHelp.print(System.err); System.exit(1); }
 
         var verb = a.remove(0).toLowerCase();
         try {
-            GSlidesConfig.load();
             switch (verb) {
                 case "help" -> GSlidesHelp.print(System.out);
                 case "listperms" -> VerbPerms.list();

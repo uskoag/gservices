@@ -16,7 +16,6 @@ public final class VerbDescribe {
         var format = Args.valOr(a, "--format", "text");
         var deck = Deck.presId(Args.req(a, "<deck>"));
         Args.noneLeft(a, "describe");
-        GSlidesConfig.require(deck, "read");
 
         var pres = Deck.get(deck, "title,pageSize,slides(objectId,pageElements)");
         Geom.adoptPageSize(pres.getPageSize());

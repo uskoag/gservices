@@ -31,7 +31,6 @@ public final class VerbPage {
         var layout = Args.valOr(a, "--layout", "BLANK");
         var deck = Deck.presId(Args.req(a, "<deck>"));
         Args.noneLeft(a, "page add");
-        GSlidesConfig.require(deck, "write");
 
         var n = count == null ? 1 : count;
         if (n > 1 && id != null) Out.die("page add: --id only makes sense with a single slide");
@@ -58,7 +57,6 @@ public final class VerbPage {
         var deck = Deck.presId(Args.req(a, "<deck>"));
         var pageRef = Args.req(a, "<page>");
         Args.noneLeft(a, "page delete");
-        GSlidesConfig.require(deck, "write");
         var pageId = Deck.pageId(deck, pageRef);
         Api.flush(deck, List.of(new Request().setDeleteObject(new DeleteObjectRequest().setObjectId(pageId))));
         Out.success("deleted slide " + pageId);
@@ -70,7 +68,6 @@ public final class VerbPage {
         var deck = Deck.presId(Args.req(a, "<deck>"));
         var pageRef = Args.req(a, "<page>");
         Args.noneLeft(a, "page duplicate");
-        GSlidesConfig.require(deck, "write");
 
         var pageId = Deck.pageId(deck, pageRef);
         var dup = new DuplicateObjectRequest().setObjectId(pageId);
@@ -95,7 +92,6 @@ public final class VerbPage {
         var pageRef = Args.req(a, "<page>");
         Args.noneLeft(a, "page move");
         if (to == null) Out.die("page move: --to N is required");
-        GSlidesConfig.require(deck, "write");
 
         var pageId = Deck.pageId(deck, pageRef);
         Api.flush(deck, List.of(new Request().setUpdateSlidesPosition(new UpdateSlidesPositionRequest()

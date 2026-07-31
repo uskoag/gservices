@@ -11,7 +11,6 @@ public final class VerbRuns {
         var deck = Deck.presId(Args.req(a, "<deck>"));
         var elemRef = Args.req(a, "<elem>");
         Args.noneLeft(a, "runs");
-        GSlidesConfig.require(deck, "read");
 
         var pres = Deck.get(deck, "slides(objectId,pageElements)");
         var el = Deck.element(pres, elemRef);

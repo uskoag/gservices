@@ -12,7 +12,6 @@ public final class VerbDelete {
         var deck = Deck.presId(Args.req(a, "<deck>"));
         var elem = Args.req(a, "<elem>");
         Args.noneLeft(a, "delete");
-        GSlidesConfig.require(deck, "write");
         Api.flush(deck, List.of(new Request().setDeleteObject(new DeleteObjectRequest().setObjectId(elem))));
         Out.success("deleted " + elem);
     }

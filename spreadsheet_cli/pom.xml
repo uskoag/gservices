@@ -123,7 +123,7 @@
                             <target>
                                 <!-- failonerror=false: build succeeds even if launcher not on PATH -->
                                 <exec executable="uskoag-sheetcli.exe" failonerror="false" resultproperty="aot.warmup.result">
-                                    <arg value="listperms"/>
+                                    <arg value="--help"/>
                                 </exec>
                                 <echo message="AOT warmup exit code: ${aot.warmup.result}"/>
                             </target>

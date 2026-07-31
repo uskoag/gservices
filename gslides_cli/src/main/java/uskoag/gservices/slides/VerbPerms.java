@@ -7,24 +7,22 @@ public final class VerbPerms {
     private VerbPerms() {}
 
     static void list() {
-        var rows = GSlidesConfig.describe();
-        if (rows.isEmpty()) Out.data("(allowlist empty -- add one with: uskoag-gslides grant --write <deck> \"<name>\")");
-        else rows.forEach(Out::data);
+        GSlidesConfig.listperms();
     }
 
-    static void grant(List<String> a) throws Exception {
-        var read = Args.flag(a, "--read");
-        var write = Args.flag(a, "--write");
-        if (read == write) Out.die("grant: pass exactly one of --read or --write");
-        var deck = Deck.presId(Args.req(a, "<deck>"));
-        var name = Args.pos(a);
-        Args.noneLeft(a, "grant");
-        GSlidesConfig.grant(deck, name, write);
+    /**
+     * Argument parsing is kept deliberately loose here, unlike before. The point of these three is now
+     * to print the replacement command, and refusing on a malformed flag would turn a redirect back
+     * into the unrecognised-command error it exists to avoid.
+     */
+    static void grant(List<String> a) {
+        var write = !Args.flag(a, "--read");
+        Args.flag(a, "--write");
+        var deck = a.isEmpty() ? null : Deck.presId(Args.pos(a));
+        GSlidesConfig.grant(deck, null, write);
     }
 
-    static void revoke(List<String> a) throws Exception {
-        var deck = Deck.presId(Args.req(a, "<deck>"));
-        Args.noneLeft(a, "revoke");
-        GSlidesConfig.revoke(deck);
+    static void revoke(List<String> a) {
+        GSlidesConfig.revoke(a.isEmpty() ? null : Deck.presId(Args.pos(a)));
     }
 }

@@ -17,6 +17,19 @@ public interface CredentialSource {
     /** Cheap enough to call on every invocation — a client asks this before every access. */
     boolean available();
 
+    /**
+     * Whether a request made right now would be served without stopping to ask a person for anything.
+     *
+     * <p>Distinct from {@link #available()}, which asks whether this source exists at all. A wallet is
+     * available while it is locked, and not ready. The difference only matters to work nobody is
+     * watching: a scheduled refresh must not raise a passphrase box at three in the morning, and when
+     * it cannot run it has to say so rather than look like a refresh that ran and found nothing.
+     * Foreground callers ignore this and simply ask — being prompted is the whole point of them.
+     */
+    default boolean ready() {
+        return available();
+    }
+
     /** Higher wins when several are on the classpath. The app-key default sits at zero. */
     default int priority() {
         return 0;

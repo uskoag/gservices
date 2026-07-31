@@ -29,7 +29,6 @@ public final class VerbStyle {
                 && size == null && font == null && color == null && link == null)
             Out.die("style: nothing to change (--bold --italic --underline --strike --size --font --color --link)");
 
-        GSlidesConfig.require(deck, "write");
         var r = target.resolve(deck);
         var span = new RichSpan(r.start(), r.end(), bold, italic, under, strike, size, font,
                 color == null ? null : Css.hex(color), link);

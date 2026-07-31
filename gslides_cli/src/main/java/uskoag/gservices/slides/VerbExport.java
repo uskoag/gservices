@@ -21,7 +21,6 @@ public final class VerbExport {
         var duration = Args.dblVal(a, "--duration");
         var deck = Deck.presId(Args.req(a, "<deck>"));
         Args.noneLeft(a, "export");
-        GSlidesConfig.require(deck, "read");
 
         var pres = Deck.get(deck, "title,slides(objectId)");
         var slides = pres.getSlides() == null ? List.<com.google.api.services.slides.v1.model.Page>of() : pres.getSlides();
@@ -35,7 +34,7 @@ public final class VerbExport {
 
         var single = from == to && slide != null;
         var dir = outDir(outArg, deck, single);
-        var token = quick ? null : Auth.credential().getAccessToken();
+        var export = quick ? null : Auth.exportAccess();
         var pause = delay != null ? delay : 3000;
         var written = new ArrayList<Path>();
 
@@ -43,7 +42,7 @@ public final class VerbExport {
             var pageId = slides.get(n - 1).getObjectId();
             Out.info("rendering slide " + n + " (" + pageId + ")" + (quick ? " via getThumbnail" : " full resolution"));
             var data = quick ? PngExport.viaThumbnail(deck, pageId, size)
-                             : PngExport.fullRes(deck, pageId, token);
+                             : PngExport.fullRes(deck, pageId, export);
             if (maxWidth != null) data = PngExport.downscale(data, maxWidth);
 
             var target = (single && outArg != null && outArg.toLowerCase().endsWith(".png"))

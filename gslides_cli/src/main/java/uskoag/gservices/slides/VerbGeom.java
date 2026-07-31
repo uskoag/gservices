@@ -25,7 +25,6 @@ public final class VerbGeom {
         Args.noneLeft(a, "geom");
         if (at == null && size == null && z == null)
             Out.die("geom: nothing to change (--at X,Y --size W,H --z front|back|forward|backward)");
-        GSlidesConfig.require(deck, "write");
 
         var pres = Deck.get(deck, "slides(objectId,pageElements)");
         var el = Deck.element(pres, elem);

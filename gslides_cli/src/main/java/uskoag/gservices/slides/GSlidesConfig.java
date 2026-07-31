@@ -1,76 +1,49 @@
 package uskoag.gservices.slides;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import org.jsoup.Jsoup;
-import org.jsoup.nodes.Comment;
-import org.jsoup.nodes.Document;
-import org.jsoup.parser.Parser;
-
 /**
- * Local allowlist gating every deck the tool touches, same shape as
- * uskoag-sheetcli's SpreadsheetCli.xml. XML rather than JSON because commenting an
- * entry out is a real use for an allowlist.
+ * What is left of this tool's own allowlist, which is a set of redirects and nothing else.
+ *
+ * <p>It used to be {@code GSlidesCli.xml}, an on-disk list of deck ids gating every verb — the same
+ * shape uskoag-sheetcli had, and retired for the same reason. There is now one enforcement point, and
+ * a second one is worse than none: two lists disagree, and the moment they do, the tool is either
+ * refusing work the wallet permits or permitting work the wallet would have questioned. The wallet
+ * wins because it is the only one the caller cannot edit — this file sat in plain XML beside the
+ * binary, so anything running as this user could grant itself a deck.
+ *
+ * <p>It also could not have worked here any more. The old list was keyed to a directory derived from
+ * the app-key, and there is no app-key.
+ *
+ * <p>The verbs redirect rather than vanishing: an unrecognised command gives a script an error, a
+ * redirect gives it an instruction. They are not proxied through to the wallet either, because a tool
+ * that could obtain its own permission by asking on its own behalf is precisely what the arrangement
+ * exists to prevent.
  */
 public final class GSlidesConfig {
 
-    static final Path FILE = Auth.OWN_CREDS.resolve("GSlidesCli.xml");
-
-    private static final LinkedHashMap<String, Perm> perms = new LinkedHashMap<>();
-
     private GSlidesConfig() {}
 
-    static void load() throws Exception {
-        if (!Files.exists(FILE)) { save(); Out.info("created " + FILE); return; }
-        var doc = Jsoup.parse(Files.readString(FILE), "", Parser.xmlParser());
-        for (var e : doc.select("allowRead")) add(e.text().trim(), e.attr("name"), false);
-        for (var e : doc.select("allowWrite")) add(e.text().trim(), e.attr("name"), true);
-        Out.info("loaded " + perms.size() + " permission(s) from " + FILE);
+    static void listperms() {
+        redirect("listperms", "uskoag-walletcli policy list");
     }
 
-    private static void add(String id, String name, boolean write) {
-        if (!id.isEmpty()) perms.put(id, new Perm(id, name, write));
+    static void grant(String deck, String name, boolean write) {
+        redirect("grant", "uskoag-walletcli policy allow --api slides --resource "
+                + (deck == null || deck.isBlank() ? "<presentationId>" : deck)
+                + " --tier " + (write ? "mutate" : "read")
+                + " --account " + (Auth.email == null ? "<email>" : Auth.email));
     }
 
-    /** Fails loudly rather than letting an unlisted deck reach the API. */
-    static void require(String presId, String op) {
-        var p = perms.get(presId);
-        if (p == null || !p.allows(op))
-            Out.die("PERMISSION DENIED: no " + op + " permission for " + presId
-                    + " -- add it with: uskoag-gslides grant --" + op + " " + presId + " \"<name>\"");
+    static void revoke(String deck) {
+        redirect("revoke", "uskoag-walletcli policy list        (find the rule id, then)\n"
+                + "  uskoag-walletcli policy revoke <ruleId>");
     }
 
-    static void grant(String id, String name, boolean write) throws Exception {
-        perms.put(id, new Perm(id, name, write));
-        save();
-        Out.success("granted " + (write ? "write" : "read") + " on " + id);
-    }
-
-    static void revoke(String id) throws Exception {
-        if (perms.remove(id) == null) Out.die("not on the allowlist: " + id);
-        save();
-        Out.success("revoked " + id);
-    }
-
-    static List<String> describe() {
-        var out = new ArrayList<String>();
-        for (var p : perms.values()) out.add(p.describe());
-        return out;
-    }
-
-    private static void save() throws Exception {
-        Files.createDirectories(FILE.getParent());
-        var doc = Jsoup.parse("<GSlidesCli><permissions/></GSlidesCli>", "", Parser.xmlParser());
-        var node = doc.selectFirst("permissions");
-        node.appendChild(new Comment(" uskoag-gslides grant --write <presentationId> \"<name>\" "));
-        for (var p : perms.values())
-            node.appendElement(p.write() ? "allowWrite" : "allowRead")
-                .attr("name", p.name() == null ? "" : p.name())
-                .text(p.id());
-        doc.outputSettings().syntax(Document.OutputSettings.Syntax.xml).prettyPrint(true).indentAmount(4);
-        Files.writeString(FILE, doc.outerHtml());
+    private static void redirect(String verb, String instead) {
+        Out.die(verb + " has moved to the USK OAG GServices Wallet, which is now the only thing deciding"
+                + " what this tool may touch — for every tool, with an expiry and an audit, instead of one"
+                + " XML file per tool.\n"
+                + "  Run instead:\n    " + instead + "\n"
+                + "  Permissions also form just by using a deck: the first touch asks once, and the dialog"
+                + " names the presentation rather than showing its id.");
     }
 }

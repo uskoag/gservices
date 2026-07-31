@@ -21,7 +21,6 @@ public final class VerbNotes {
         var pageRef = Args.req(a, "<page>");
         if (set && body == null && html == null) body = Args.pos(a);
         Args.noneLeft(a, set ? "notes set" : "notes");
-        GSlidesConfig.require(deck, set ? "write" : "read");
 
         var pres = Deck.get(deck, FIELDS);
         var page = Deck.page(pres, pageRef);

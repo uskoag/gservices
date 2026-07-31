@@ -25,7 +25,9 @@ public final class VerbDeck {
 
         var id = copyOf == null ? create(title) : copy(Deck.presId(copyOf), title);
 
-        GSlidesConfig.grant(id, title, true);
+        // The deck used to be auto-granted on its own allowlist here. Nothing takes its place, and that
+        // is the point: a tool must not hand itself a standing permission, not even to something it
+        // just created. The first verb that touches it asks once, and the dialog can name it.
         Out.data(id);
         Out.data(Deck.url(id));
         Out.success("created \"" + title + "\"");
@@ -38,7 +40,6 @@ public final class VerbDeck {
     }
 
     private static String copy(String srcId, String title) throws Exception {
-        GSlidesConfig.require(srcId, "read");
         var copy = Auth.drive().files()
                 .copy(srcId, new File().setName(title))
                 .setFields("id").execute();

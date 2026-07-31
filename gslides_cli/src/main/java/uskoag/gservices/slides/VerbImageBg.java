@@ -26,7 +26,6 @@ public final class VerbImageBg {
         var pageRef = Args.req(a, "<page>");
         var src = undo ? null : Args.req(a, "<localPath|url>");
         Args.noneLeft(a, "imagebg");
-        GSlidesConfig.require(deck, "write");
 
         var pres = Deck.get(deck, "pageSize,slides(objectId,pageElements(objectId))");
         Geom.adoptPageSize(pres.getPageSize());

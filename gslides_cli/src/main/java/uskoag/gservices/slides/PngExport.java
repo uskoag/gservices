@@ -25,14 +25,36 @@ public final class PngExport {
 
     private PngExport() {}
 
-    static byte[] fullRes(String presId, String pageId, String accessToken) throws Exception {
-        var url = "https://docs.google.com/presentation/d/" + presId
-                + "/export/png?id=" + presId + "&pageid=" + pageId;
-        var req = HttpRequest.newBuilder(URI.create(url))
-                .header("Authorization", "Bearer " + accessToken).GET().build();
-        var res = HTTP.send(req, HttpResponse.BodyHandlers.ofByteArray());
+    /**
+     * The full-resolution render, authorised without this process ever seeing a Google token.
+     *
+     * <p>{@code access.rootUrl()} is the loopback root when a wallet is brokering and null otherwise,
+     * so the same code serves both: with a wallet the request goes to the wallet, which classifies it,
+     * names the deck and attaches the bearer on the far side; without one it goes straight to
+     * docs.google.com exactly as before. The header is applied by the initializer either way, which is
+     * what removed the need for {@code getAccessToken()} — the call that used to force a real
+     * credential into this jar for this one endpoint.
+     */
+    static byte[] fullRes(String presId, String pageId, uskoag.gservices.ServiceAccess access)
+            throws Exception {
+        var root = access.rootUrl() == null ? "https://docs.google.com/" : access.rootUrl();
+        var url = root + "presentation/d/" + presId + "/export/png?id=" + presId + "&pageid=" + pageId;
+
+        var req = HttpRequest.newBuilder(URI.create(url)).GET();
+        // The generated clients take an initializer; this endpoint is hand-rolled, so the same
+        // initializer is asked what header it would have set and that header is copied across. Going
+        // through it rather than around it is what keeps one refresh path for the whole tool.
+        var probe = new com.google.api.client.http.javanet.NetHttpTransport()
+                .createRequestFactory().buildGetRequest(new com.google.api.client.http.GenericUrl(url));
+        access.initializer().initialize(probe);
+        var auth = probe.getHeaders().getAuthorization();
+        if (auth != null) req.header("Authorization", auth);
+
+        var res = HTTP.send(req.build(), HttpResponse.BodyHandlers.ofByteArray());
         if (res.statusCode() != 200)
-            throw new IllegalStateException("export of " + pageId + " failed: HTTP " + res.statusCode());
+            throw new IllegalStateException("export of " + pageId + " failed: HTTP " + res.statusCode()
+                    + (res.statusCode() == 403 ? " — if a wallet is brokering, this is likely its refusal"
+                       + " rather than Google's; check the approval dialog" : ""));
         return res.body();
     }
 

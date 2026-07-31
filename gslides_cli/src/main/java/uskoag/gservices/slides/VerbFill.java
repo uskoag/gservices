@@ -35,7 +35,6 @@ public final class VerbFill {
             pairs.put(kv.substring(0, eq), kv.substring(eq + 1));
         }
         if (pairs.isEmpty()) Out.die("fill: nothing to replace (pass key=value pairs, or --map file.json)");
-        GSlidesConfig.require(deck, "write");
 
         var reqs = new ArrayList<Request>();
         var keys = new ArrayList<String>();
