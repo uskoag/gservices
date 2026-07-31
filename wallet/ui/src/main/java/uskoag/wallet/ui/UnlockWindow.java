@@ -4,6 +4,7 @@ import javafx.application.Platform;
 import javafx.scene.control.PasswordField;
 import javafx.stage.Stage;
 import uskoag.wallet.daemon.CredentialsBackup;
+import uskoag.wallet.daemon.Keyring;
 import uskoag.wallet.daemon.WalletCore;
 
 import java.util.Arrays;
@@ -64,8 +65,9 @@ public final class UnlockWindow {
                     fail(status, first, confirm, "The two entries did not match. Both boxes cleared - type it again.");
                     return;
                 }
-                if (creating && typed.length < 8) {
-                    fail(status, first, confirm, "Use at least 8 characters. Both boxes cleared.");
+                if (creating && typed.length < Keyring.MIN_PASSPHRASE) {
+                    fail(status, first, confirm, "Use at least " + Keyring.MIN_PASSPHRASE
+                            + " characters. Both boxes cleared.");
                     return;
                 }
                 core.unlock(typed);

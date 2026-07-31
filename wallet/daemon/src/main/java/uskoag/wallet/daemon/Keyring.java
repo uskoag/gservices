@@ -23,6 +23,15 @@ public final class Keyring {
     private static final byte[] MAGIC = {'U', 'K', 'W', 'K', '1'};
     private static final int FLAG_DPAPI = 0x1, SALT_LEN = 32, HEADER = 8 + SALT_LEN;
 
+    /**
+     * Deliberately low, and it is not the thing doing the work. Length here only slows an attacker who
+     * already holds the file, and to hold it they must already be on this machine as this user — at
+     * which point section 2 of the design applies and a longer passphrase buys little. The controls
+     * that matter are DPAPI binding the file to this machine, the approval gate, and the audit. A
+     * minimum that makes the wallet annoying to unlock costs more than it returns.
+     */
+    public static final int MIN_PASSPHRASE = 6;
+
     private SecretKey master;
     private byte[] salt;
     private char[] passphrase;
@@ -107,7 +116,9 @@ public final class Keyring {
     public synchronized void changePassphrase(char[] current, char[] fresh) throws IOException {
         if (data == null) throw new IllegalStateException("unlock the wallet before changing its passphrase");
         if (!Arrays.equals(passphrase, current)) throw new IOException("current passphrase does not match");
-        if (fresh == null || fresh.length < 8) throw new IOException("the new passphrase is too short");
+        if (fresh == null || fresh.length < MIN_PASSPHRASE) {
+            throw new IOException("the new passphrase must be at least " + MIN_PASSPHRASE + " characters");
+        }
 
         var previous = passphrase;
         salt = Aes.salt();
