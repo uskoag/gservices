@@ -22,6 +22,15 @@ public final class HeadlessGateway implements ApprovalGateway {
         Log.warn("the wallet is locked and cannot prompt: " + because);
     }
 
+    /** No window to show it in, so stdout — where it can be selected out of the terminal. */
+    @Override
+    public void authUrl(String account, String url) {
+        System.out.println();
+        System.out.println("Open this in a browser signed in as " + account + ":");
+        System.out.println(url);
+        System.out.println();
+    }
+
     @Override
     public boolean interactive() {
         return false;

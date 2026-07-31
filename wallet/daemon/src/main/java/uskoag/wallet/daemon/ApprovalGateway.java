@@ -15,6 +15,17 @@ public interface ApprovalGateway {
     void unlockNeeded(String because);
 
     /**
+     * Show the consent URL so it can be copied.
+     *
+     * <p>Google's helper opens whatever Windows calls the default browser, which is routinely not the
+     * one already signed in as the account being consented — and once it has opened there, the URL is
+     * inside a window you cannot easily get it out of. Handing over the text makes the wrong browser a
+     * nuisance instead of a dead end.
+     */
+    default void authUrl(String account, String url) {
+    }
+
+    /**
      * Bring the wallet's own window forward. Called when a second launch finds this one already
      * running: the expectation when someone starts an app that is already up is that its window
      * appears, not that a second copy argues with the first.

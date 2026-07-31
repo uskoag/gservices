@@ -26,6 +26,11 @@ public final class FxGateway implements ApprovalGateway {
     }
 
     @Override
+    public void authUrl(String account, String url) {
+        AuthUrlWindow.show(account, url);
+    }
+
+    @Override
     public void showWindow() {
         Platform.runLater(() -> {
             if (core.keyring.unlocked()) MainWindow.show(core);

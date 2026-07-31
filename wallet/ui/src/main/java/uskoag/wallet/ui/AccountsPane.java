@@ -109,11 +109,13 @@ public final class AccountsPane {
                 try {
                     accounts.login(new Asks.Login(who, INFER.equals(picked) ? null : picked,
                             chosen.groups(), "custom", chosen.customScopes(), 8888));
+                    AuthUrlWindow.dismiss();
                     javafx.application.Platform.runLater(() -> {
                         status.text("Granted.");
                         refresh.run();
                     });
                 } catch (Exception ex) {
+                    AuthUrlWindow.dismiss();
                     javafx.application.Platform.runLater(() -> status.text(String.valueOf(ex.getMessage())));
                 }
             }, "wallet-consent").start();

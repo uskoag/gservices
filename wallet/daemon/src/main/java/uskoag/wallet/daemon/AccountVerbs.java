@@ -77,7 +77,8 @@ public final class AccountVerbs {
 
         var done = new ArrayList<String>();
         for (var group : wanted) {
-            var fresh = OAuthRunner.consent(req.account(), org, group, req.port() <= 0 ? 8888 : req.port());
+            var fresh = OAuthRunner.consent(req.account(), org, group, req.port() <= 0 ? 8888 : req.port(),
+                    core.gateway(), core.settings.openBrowserAutomatically);
             core.keyring.find(req.account(), group.id()).ifPresent(core.keyring.data().credentials()::remove);
             // Narrower tokens seed lower so least privilege is the default without anyone ordering them.
             fresh.order = group.width();

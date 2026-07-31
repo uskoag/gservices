@@ -1,7 +1,6 @@
 package uskoag.wallet.daemon;
 
 import com.google.api.client.auth.oauth2.Credential;
-import com.google.api.client.extensions.java6.auth.oauth2.AuthorizationCodeInstalledApp;
 import com.google.api.client.extensions.jetty.auth.oauth2.LocalServerReceiver;
 import com.google.api.client.googleapis.auth.oauth2.GoogleAuthorizationCodeFlow;
 import com.google.api.client.googleapis.auth.oauth2.GoogleClientSecrets;
@@ -32,6 +31,12 @@ public final class OAuthRunner {
 
     public static CredentialRecord consent(String account, OrgRecord org,
                                            uskoag.wallet.wire.ScopeGroup group, int port) throws IOException {
+        return consent(account, org, group, port, new HeadlessGateway(), true);
+    }
+
+    public static CredentialRecord consent(String account, OrgRecord org, uskoag.wallet.wire.ScopeGroup group,
+                                           int port, ApprovalGateway gateway, boolean openBrowser)
+            throws IOException {
         var scopes = group.scopes();
         var secrets = GoogleClientSecrets.load(GsonFactory.getDefaultInstance(),
                 new StringReader(org.credentialsJson));
@@ -45,7 +50,8 @@ public final class OAuthRunner {
         var receiver = new LocalServerReceiver.Builder().setPort(port).build();
         // authorize() is keyed per user id in the store; keying it per group too keeps two consents in
         // the same run from colliding in the in-memory store and returning each other's credential.
-        var credential = new AuthorizationCodeInstalledApp(flow, receiver).authorize(account + "|" + group.id());
+        var credential = new ConsentApp(flow, receiver, gateway, account, openBrowser)
+                .authorize(account + "|" + group.id());
         return record(account, org.id, group.id(), scopes, credential);
     }
 

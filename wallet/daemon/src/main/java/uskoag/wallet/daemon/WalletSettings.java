@@ -26,6 +26,13 @@ public final class WalletSettings {
      */
     public boolean backupCredentialsJson = true;
 
+    /**
+     * Google's helper opens whatever Windows calls the default browser, which with several org accounts
+     * on one machine is often signed in as the wrong one. The copyable URL window appears either way;
+     * set this false if the automatic attempt is never the right browser and is just noise.
+     */
+    public boolean openBrowserAutomatically = true;
+
     public int destructiveOps = 25, destructiveMinutes = 15, autoLockMinutes = 0;
 
     public static WalletSettings load() {
@@ -37,6 +44,7 @@ public final class WalletSettings {
             s.readRequiresRule = bool(kv, "readRequiresRule", s.readRequiresRule);
             s.mutateRequiresRule = bool(kv, "mutateRequiresRule", s.mutateRequiresRule);
             s.backupCredentialsJson = bool(kv, "backupCredentialsJson", s.backupCredentialsJson);
+            s.openBrowserAutomatically = bool(kv, "openBrowserAutomatically", s.openBrowserAutomatically);
             s.destructiveOps = num(kv, "destructiveOps", s.destructiveOps);
             s.destructiveMinutes = num(kv, "destructiveMinutes", s.destructiveMinutes);
             s.autoLockMinutes = num(kv, "autoLockMinutes", s.autoLockMinutes);
