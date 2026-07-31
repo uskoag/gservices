@@ -88,8 +88,10 @@ public final class AccountVerbs {
             return fresh;
         });
 
-        var tokenByAccount = new LinkedHashMap<String, String>();
-        var scopesByAccount = new LinkedHashMap<String, LinkedHashSet<String>>();
+        // One candidate per (account, tool store), each carrying the scopes its own token really has.
+        // Never a union across tokens: a union describes none of them, and the wallet would then claim
+        // powers the token it kept does not hold, failing later on an opaque 403.
+        var best = new LinkedHashMap<String, Found>();
         var perProfile = new LinkedHashMap<String, List<String>>();
         var visited = new ArrayList<Path>();
 
@@ -104,10 +106,7 @@ public final class AccountVerbs {
             for (var account : wanted) {
                 var found = ImportOldStore.read(root, account, req.appKey(), Profiles.scopes(profile));
                 if (found == null) continue;
-                // A later token supersedes an earlier one; they are all the same account, and the newest
-                // refresh token is the one Google will still honour.
-                tokenByAccount.put(account, found.refreshToken());
-                scopesByAccount.computeIfAbsent(account, k -> new LinkedHashSet<>()).addAll(found.scopes());
+                best.merge(account, found, (a, b) -> b.scopes().size() > a.scopes().size() ? b : a);
                 if (org.credentialsJson == null) adoptClient(org, found.credentialsJson());
                 core.keyring.claimDomain(org, account);
                 hit.add(account);
@@ -115,19 +114,32 @@ public final class AccountVerbs {
             perProfile.put(profile, hit);
         }
 
-        for (var e : tokenByAccount.entrySet()) {
-            core.keyring.find(e.getKey()).ifPresent(core.keyring.data().credentials()::remove);
+        var taken = new ArrayList<String>();
+        var kept = new ArrayList<String>();
+        for (var e : best.entrySet()) {
+            var existing = core.keyring.find(e.getKey()).orElse(null);
+            // Never downgrade. A fresh consent covering every tool must not be replaced by an older,
+            // narrower token just because an import ran afterwards.
+            if (existing != null && existing.refreshToken != null
+                    && existing.scopes().size() >= e.getValue().scopes().size()) {
+                kept.add(e.getKey());
+                continue;
+            }
+            if (existing != null) core.keyring.data().credentials().remove(existing);
             var rec = new CredentialRecord(e.getKey(), org.id);
-            rec.refreshToken = e.getValue();
-            rec.scopes = List.copyOf(scopesByAccount.get(e.getKey()));
+            rec.refreshToken = e.getValue().refreshToken();
+            rec.scopes = List.copyOf(e.getValue().scopes());
             core.keyring.data().credentials().add(rec);
+            taken.add(e.getKey());
         }
         core.keyring.save();
-        if (req.deleteOld()) deleteOldStores(visited, tokenByAccount.keySet(), req.appKey());
+        if (req.deleteOld()) deleteOldStores(visited, best.keySet(), req.appKey());
 
         return Json.of(Map.of(
                 "org", org.id,
-                "imported", tokenByAccount.keySet(),
+                "imported", taken,
+                "keptExistingBecauseWider", kept,
+                "readyFor", readyMap(taken),
                 "perProfile", perProfile,
                 "rootsScanned", visited.stream().map(Path::toString).toList()));
     }
@@ -173,6 +185,19 @@ public final class AccountVerbs {
         } catch (IOException e) {
             Log.warn("could not read the OAuth client during import - " + e);
         }
+    }
+
+    /**
+     * Which tools each imported account can actually drive, which is the only honest way to report an
+     * import: an old store holds one token per tool, so importing may well leave an account able to do
+     * Sheets and not Gmail. Saying so here is what tells you which ones still need a login.
+     */
+    private Map<String, String> readyMap(List<String> accounts) {
+        var out = new LinkedHashMap<String, String>();
+        for (var a : accounts) {
+            core.keyring.find(a).ifPresent(c -> out.put(a, readyFor(c)));
+        }
+        return out;
     }
 
     private static String readyFor(CredentialRecord rec) {
