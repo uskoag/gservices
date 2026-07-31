@@ -29,6 +29,7 @@ public final class Groups {
                     + " in a folder, because parents is a Drive field, and a file that lands in My Drive"
                     + " root is not created correctly.",
             Tier2.SENSITIVE,
+            10,
             "https://www.googleapis.com/auth/spreadsheets",
             "https://www.googleapis.com/auth/documents",
             "https://www.googleapis.com/auth/presentations");
@@ -38,6 +39,7 @@ public final class Groups {
             "Search by name, list folders, download and export, read revision history and modified times."
                     + " Reads every file the account can reach.",
             Tier2.RESTRICTED,
+            30,
             "https://www.googleapis.com/auth/drive.readonly");
 
     public static final ScopeGroup DRIVE_FILE = ScopeGroup.of("drive.file",
@@ -45,6 +47,7 @@ public final class Groups {
             "Create and edit files it made, or that you opened with it. Bounded by which files, not by"
                     + " which operations. No consent warning and no user cap.",
             Tier2.NONE,
+            20,
             "https://www.googleapis.com/auth/drive.file");
 
     public static final ScopeGroup DRIVE_FULL = ScopeGroup.of("drive.full",
@@ -53,12 +56,14 @@ public final class Groups {
                     + " narrower exists — Google sells no write-without-delete. Deletion and sharing are"
                     + " gated by the wallet, not the scope.",
             Tier2.RESTRICTED,
+            60,
             "https://www.googleapis.com/auth/drive");
 
     public static final ScopeGroup MAIL_READ = ScopeGroup.of("mail.read",
             "Mail: read only",
             "Read messages, threads, labels and settings. Cannot change or send anything.",
             Tier2.RESTRICTED,
+            30,
             "https://www.googleapis.com/auth/gmail.readonly");
 
     public static final ScopeGroup MAIL_WRITE = ScopeGroup.of("mail.write",
@@ -66,6 +71,7 @@ public final class Groups {
             "Everything except permanent delete. SENDING IS INCLUDED — no Gmail scope separates drafting"
                     + " from sending. The wallet gates send at the request instead.",
             Tier2.RESTRICTED,
+            50,
             "https://www.googleapis.com/auth/gmail.modify");
 
     public static final ScopeGroup MAIL_SETTINGS = ScopeGroup.of("mail.settings",
@@ -73,6 +79,7 @@ public final class Groups {
             "Forwarding, filters and delegation. An auto-forward rule is a standing exfiltration channel,"
                     + " which is why this is never bundled with anything else. Grant almost never.",
             Tier2.RESTRICTED,
+            70,
             "https://www.googleapis.com/auth/gmail.settings.basic",
             "https://www.googleapis.com/auth/gmail.settings.sharing");
 
@@ -104,7 +111,7 @@ public final class Groups {
     /** Every group that fully covers the wanted scopes, narrowest first. */
     public static List<ScopeGroup> covering(List<String> wanted) {
         var out = new ArrayList<>(all().stream().filter(g -> g.covers(wanted)).toList());
-        out.sort(java.util.Comparator.comparingInt(ScopeGroup::width));
+        out.sort(java.util.Comparator.comparingInt(ScopeGroup::rank));
         return out;
     }
 }

@@ -38,6 +38,10 @@ public final class Asks {
     public record OrgRef(String id) {
     }
 
+    /** Renaming a client has to carry every account that points at it, or they orphan. */
+    public record OrgRename(String from, String to) {
+    }
+
     /** Replaces an org's domain patterns. Exact, {@code *.wildcard} or {@code re:} regex. */
     public record OrgDomains(String id, List<String> domains) {
     }

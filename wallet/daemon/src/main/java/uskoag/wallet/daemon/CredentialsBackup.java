@@ -86,6 +86,15 @@ public final class CredentialsBackup {
         return restored;
     }
 
+    /** Drops one org's backup, so a rename does not leave the old id lying around to be restored later. */
+    public static void forget(String orgId) {
+        try {
+            Files.deleteIfExists(WalletPaths.credentialsBackup().resolve(safe(orgId) + ".credentials.json"));
+        } catch (Exception e) {
+            Log.warn("could not drop the old backup for " + orgId + " - " + e);
+        }
+    }
+
     public static int purge() {
         var gone = 0;
         for (var file : all()) {

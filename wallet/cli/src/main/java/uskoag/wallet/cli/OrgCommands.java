@@ -21,6 +21,8 @@ public final class OrgCommands {
             case "domains" -> WalletCli.out(client.callRaw("org.domains",
                     new Asks.OrgDomains(a.at(2), a.list("domains"))));
             case "remove" -> WalletCli.out(client.callRaw("org.remove", new Asks.OrgRef(a.at(2))));
+            case "rename" -> WalletCli.out(client.callRaw("org.rename",
+                    new Asks.OrgRename(a.at(2), a.at(3))));
             default -> {
                 usage();
                 yield 1;
@@ -44,6 +46,7 @@ public final class OrgCommands {
         System.err.println("       uskoag-walletcli org add <id> --file <credentials.json>"
                 + " [--label \"...\"] [--domains a.org,*.b.org]");
         System.err.println("       uskoag-walletcli org domains <id> --domains a.org,*.b.org,re:PATTERN");
+        System.err.println("       uskoag-walletcli org rename <old-id> <new-id>");
         System.err.println("       uskoag-walletcli org remove <id>");
         System.err.println();
         System.err.println("domain patterns: exact  |  *.wildcard  |  re:regex   (a client may serve many)");

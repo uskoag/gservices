@@ -75,25 +75,48 @@ public final class AccountVerbs {
         if (wanted.isEmpty()) throw new IOException("nothing to grant: pass --groups, or --scopes for a"
                 + " hand-written set. Known groups: " + Groups.all().stream().map(ScopeGroup::id).toList());
 
+        // Each group is committed on its own. Granting three and having the second refused must not
+        // discard the first: a consent already given is a real thing that happened, and throwing it away
+        // means going back to Google for a permission the account already holds. The earlier code saved
+        // only after the whole loop, so a failure left the successful token in memory, live until the
+        // next lock and then silently gone - which is worse than losing it outright.
         var done = new ArrayList<String>();
+        var failed = new LinkedHashMap<String, String>();
         for (var group : wanted) {
-            var fresh = OAuthRunner.consent(req.account(), org, group, req.port() <= 0 ? 8888 : req.port(),
-                    core.gateway(), core.settings.openBrowserAutomatically);
-            core.keyring.find(req.account(), group.id()).ifPresent(core.keyring.data().credentials()::remove);
-            // Narrower tokens seed lower so least privilege is the default without anyone ordering them.
-            fresh.order = group.width();
-            core.keyring.data().credentials().add(fresh);
-            done.add(group.id());
+            try {
+                var fresh = OAuthRunner.consent(req.account(), org, group, req.port() <= 0 ? 8888 : req.port(),
+                        core.gateway(), core.settings.openBrowserAutomatically);
+                core.keyring.find(req.account(), group.id()).ifPresent(core.keyring.data().credentials()::remove);
+                // Narrower tokens seed lower so least privilege is the default without anyone ordering them.
+                fresh.order = group.rank();
+                core.keyring.data().credentials().add(fresh);
+                core.keyring.claimDomain(org, req.account());
+                if (org.owner == null || org.owner.isBlank()) org.owner = req.account();
+                core.keyring.save();
+                done.add(group.id());
+            } catch (Exception e) {
+                failed.put(group.id(), String.valueOf(e.getMessage()));
+                Log.warn("consent failed for " + req.account() + " / " + group.id() + " - " + e.getMessage());
+            }
         }
-        core.keyring.claimDomain(org, req.account());
-        // First account to consent under this client is recorded as its owner, purely so the wallet can
-        // warn next time. A client in Testing status only admits its listed test users, and Google's
-        // refusal when it does not says nothing useful about why.
-        if (org.owner == null || org.owner.isBlank()) org.owner = req.account();
-        core.keyring.save();
         core.tokens.clear();
-        return Json.of(Asks.Done.yes("consented " + req.account() + " under org '" + org.id + "': "
-                + String.join(", ", done)));
+
+        if (done.isEmpty()) {
+            throw new IOException("nothing was granted. " + describe(failed));
+        }
+        return Json.of(Map.of(
+                "account", req.account(),
+                "org", org.id,
+                "granted", done,
+                "failed", failed,
+                "message", done.size() + " granted" + (failed.isEmpty() ? " and kept."
+                        : ", " + failed.size() + " failed and can be retried on their own. " + describe(failed))));
+    }
+
+    private static String describe(Map<String, String> failed) {
+        return failed.entrySet().stream()
+                .map(e -> e.getKey() + ": " + e.getValue())
+                .reduce((a, b) -> a + "; " + b).orElse("");
     }
 
     /** Named groups, else a hand-written scope set, else the suggestion for a named tool. */
@@ -223,6 +246,40 @@ public final class AccountVerbs {
         return Json.of(Asks.Done.yes(org.id + " now answers for: "
                 + (org.domains().isEmpty() ? "(nothing - accounts must name --org)"
                 : String.join(", ", org.domains()))));
+    }
+
+    /**
+     * Renames a client and re-points every account at it in the same step.
+     *
+     * <p>The id is a foreign key, not a label — every {@link CredentialRecord} carries it — so renaming
+     * without carrying the accounts would leave them pointing at a client that no longer exists, and
+     * their tokens would fail to refresh at the next hour boundary with nothing obvious to blame.
+     */
+    public String renameOrg(Asks.OrgRename req) throws IOException {
+        require();
+        if (req.to() == null || req.to().isBlank()) return Json.of(Asks.Done.no("give it a new id"));
+        var org = core.keyring.org(req.from())
+                .orElseThrow(() -> new IOException("no such client: " + req.from()));
+        if (core.keyring.org(req.to()).isPresent()) {
+            return Json.of(Asks.Done.no("'" + req.to() + "' already exists - pick another id"));
+        }
+        var moved = 0;
+        for (var c : core.keyring.data().credentials()) {
+            if (req.from().equalsIgnoreCase(c.orgId)) {
+                c.orgId = req.to();
+                moved++;
+            }
+        }
+        var wasLabel = org.id.equals(org.label);
+        org.id = req.to();
+        if (wasLabel) org.label = req.to();
+        core.keyring.save();
+        if (core.settings.backupCredentialsJson && org.credentialsJson != null) {
+            CredentialsBackup.save(org.id, org.credentialsJson);
+            CredentialsBackup.forget(req.from());
+        }
+        return Json.of(Asks.Done.yes("renamed '" + req.from() + "' to '" + org.id + "', "
+                + moved + " token(s) re-pointed"));
     }
 
     /**
