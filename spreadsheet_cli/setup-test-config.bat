@@ -20,7 +20,7 @@ echo.
 echo   To get started:
 echo     uskoag-walletcli status                  is a wallet running, is it unlocked
 echo     uskoag-walletcli login ^<email^>           consent once for this account
-echo     uskoag-sheetcli --email ^<email^> read ^<spreadsheetId^> Sheet1 A1
+echo     uskoag-gsheetscli --email ^<email^> read ^<spreadsheetId^> Sheet1 A1
 echo.
 echo   To see or drop what stands right now:
 echo     uskoag-walletcli policy list

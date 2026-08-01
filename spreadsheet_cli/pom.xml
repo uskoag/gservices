@@ -83,7 +83,7 @@
                                     <mainClass>uskoag.gservices.SpreadsheetCli</mainClass>
                                 </transformer>
                             </transformers>
-                            <finalName>uskoag-sheetcli</finalName>
+                            <finalName>uskoag-gsheetscli</finalName>
                             <filters>
                                 <filter>
                                     <!-- Exclude signature files to avoid security exceptions -->
@@ -122,7 +122,7 @@
                             <skip>${skip.aot.warmup}</skip>
                             <target>
                                 <!-- failonerror=false: build succeeds even if launcher not on PATH -->
-                                <exec executable="uskoag-sheetcli.exe" failonerror="false" resultproperty="aot.warmup.result">
+                                <exec executable="uskoag-gsheetscli.exe" failonerror="false" resultproperty="aot.warmup.result">
                                     <arg value="--help"/>
                                 </exec>
                                 <echo message="AOT warmup exit code: ${aot.warmup.result}"/>
@@ -135,7 +135,7 @@
     </build>
 
     <properties>
-        <!-- Set to true on CI or where uskoag-sheetcli.exe is not on PATH -->
+        <!-- Set to true on CI or where uskoag-gsheetscli.exe is not on PATH -->
         <skip.aot.warmup>false</skip.aot.warmup>
     </properties>
 </project>

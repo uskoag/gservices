@@ -6,7 +6,7 @@ import java.util.List;
 /**
  * The verb to call first. Because slide element ids are not derivable, the primitives
  * are unusable without a way to discover them -- and dumping each slide in turn is the
- * context-flooding mistake `describeschema` exists to prevent in uskoag-sheetcli.
+ * context-flooding mistake `describeschema` exists to prevent in uskoag-gsheetscli.
  */
 public final class VerbDescribe {
 

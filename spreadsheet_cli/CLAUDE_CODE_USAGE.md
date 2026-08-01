@@ -1,12 +1,12 @@
-# Using uskoag-sheetcli from Claude Code
+# Using uskoag-gsheetscli from Claude Code
 
 ## TL;DR
 
 ```bash
-uskoag-sheetcli read  SHEET_ID SheetName A1
-uskoag-sheetcli read  SHEET_ID SheetName A1:H20 --format tsv
-uskoag-sheetcli write SHEET_ID SheetName A1 "value"
-uskoag-sheetcli write SHEET_ID SheetName A1 --tsv-file data.tsv
+uskoag-gsheetscli read  SHEET_ID SheetName A1
+uskoag-gsheetscli read  SHEET_ID SheetName A1:H20 --format tsv
+uskoag-gsheetscli write SHEET_ID SheetName A1 "value"
+uskoag-gsheetscli write SHEET_ID SheetName A1 --tsv-file data.tsv
 ```
 
 **Output contract (as of PRP-01):**
@@ -55,13 +55,13 @@ Write a 2-D block starting at the top-left of `<address>`:
 
 ```bash
 # From files (best for agents — no shell quoting headaches):
-uskoag-sheetcli write SHEET_ID Sheet1 A1 --tsv-file  grid.tsv
-uskoag-sheetcli write SHEET_ID Sheet1 A1 --csv-file  data.csv     # RFC-4180: quotes/commas/newlines OK
-uskoag-sheetcli write SHEET_ID Sheet1 A1 --json-file matrix.json  # [["a","b"],["c","d"]]
+uskoag-gsheetscli write SHEET_ID Sheet1 A1 --tsv-file  grid.tsv
+uskoag-gsheetscli write SHEET_ID Sheet1 A1 --csv-file  data.csv     # RFC-4180: quotes/commas/newlines OK
+uskoag-gsheetscli write SHEET_ID Sheet1 A1 --json-file matrix.json  # [["a","b"],["c","d"]]
 
 # Inline:
-uskoag-sheetcli write SHEET_ID Sheet1 A1 --tsv $'a\tb\tc\nd\te\tf'
-uskoag-sheetcli write SHEET_ID Sheet1 A1 --json '[["a","b"],["c","d"]]'
+uskoag-gsheetscli write SHEET_ID Sheet1 A1 --tsv $'a\tb\tc\nd\te\tf'
+uskoag-gsheetscli write SHEET_ID Sheet1 A1 --json '[["a","b"],["c","d"]]'
 ```
 
 - **TSV** is the friendliest: tab = column break, newline = row break, no quoting.
@@ -71,10 +71,10 @@ uskoag-sheetcli write SHEET_ID Sheet1 A1 --json '[["a","b"],["c","d"]]'
 ## Read output formats
 
 ```bash
-uskoag-sheetcli read SHEET_ID Sheet1 A1:C2 --format kv    # default: "A1": "value"  (one line per cell)
-uskoag-sheetcli read SHEET_ID Sheet1 A1:C2 --format tsv   # rectangular grid, cheapest to parse
-uskoag-sheetcli read SHEET_ID Sheet1 A1:C2 --format csv   # RFC-4180
-uskoag-sheetcli read SHEET_ID Sheet1 A1:C2 --format json  # [["..","..",..],..]
+uskoag-gsheetscli read SHEET_ID Sheet1 A1:C2 --format kv    # default: "A1": "value"  (one line per cell)
+uskoag-gsheetscli read SHEET_ID Sheet1 A1:C2 --format tsv   # rectangular grid, cheapest to parse
+uskoag-gsheetscli read SHEET_ID Sheet1 A1:C2 --format csv   # RFC-4180
+uskoag-gsheetscli read SHEET_ID Sheet1 A1:C2 --format json  # [["..","..",..],..]
 ```
 
 - A single-cell read (`read ... A1`) always prints the bare value, regardless of format.
@@ -84,22 +84,22 @@ uskoag-sheetcli read SHEET_ID Sheet1 A1:C2 --format json  # [["..","..",..],..]
 ### Formulas instead of values
 
 ```bash
-uskoag-sheetcli read SHEET_ID Sheet1 C1 --formulas            # "=SUM(A1:A9)" instead of 30
-uskoag-sheetcli read SHEET_ID Sheet1 C1 --render UNFORMATTED  # superset: FORMATTED (default)|UNFORMATTED|FORMULA
+uskoag-gsheetscli read SHEET_ID Sheet1 C1 --formulas            # "=SUM(A1:A9)" instead of 30
+uskoag-gsheetscli read SHEET_ID Sheet1 C1 --render UNFORMATTED  # superset: FORMATTED (default)|UNFORMATTED|FORMULA
 ```
 `--formulas` is shorthand for `--render FORMULA` (mutually exclusive with `--render`). A cell with no formula still returns its literal value.
 
 ### Both formula and value — no need to choose
 
 ```bash
-uskoag-sheetcli read SHEET_ID Sheet1 A1:C3 --both --format json   # nested {"formula":..,"value":..} per cell
-uskoag-sheetcli read SHEET_ID Sheet1 A1:C3 --both --format tsv    # same pair as compact JSON text per cell
+uskoag-gsheetscli read SHEET_ID Sheet1 A1:C3 --both --format json   # nested {"formula":..,"value":..} per cell
+uskoag-gsheetscli read SHEET_ID Sheet1 A1:C3 --both --format tsv    # same pair as compact JSON text per cell
 ```
 `--both` fetches each range twice (value + formula) and pairs them per cell — mutually exclusive with `--formulas`/`--render`. `--format json` gets real nested objects; `kv`/`tsv`/`csv` embed the same `{"formula":"=SUM(A1:A9)","value":"30"}` pair as a compact JSON string per cell, so it round-trips through every format (tsv included — no embedded tabs/newlines to worry about).
 
 ### Batch read (scattered ranges in one call)
 ```bash
-uskoag-sheetcli read SHEET_ID Sheet1 A1:C3 E1:F2 --format tsv
+uskoag-gsheetscli read SHEET_ID Sheet1 A1:C3 E1:F2 --format tsv
 # Output is delimited per range:
 #   # Sheet1!A1:C3
 #   <rows...>
@@ -113,16 +113,16 @@ When you need *specific* rows/columns — "who haven't I emailed yet", "which co
 
 ```bash
 # rows not yet emailed (blank "Emailed" column D) — _row ties each back to the sheet
-uskoag-sheetcli query SHEET_ID Contacts "SELECT _row, A, C FROM t WHERE _row>1 AND D=''"
+uskoag-gsheetscli query SHEET_ID Contacts "SELECT _row, A, C FROM t WHERE _row>1 AND D=''"
 
 # duplicate emails (repeat candidates) — GROUP BY / COUNT / HAVING
-uskoag-sheetcli query SHEET_ID Contacts "SELECT C, COUNT(*) n FROM t WHERE _row>1 GROUP BY C HAVING COUNT(*)>1"
+uskoag-gsheetscli query SHEET_ID Contacts "SELECT C, COUNT(*) n FROM t WHERE _row>1 GROUP BY C HAVING COUNT(*)>1"
 
 # distinct recipients as cheap TSV
-uskoag-sheetcli query SHEET_ID Contacts "SELECT DISTINCT C FROM t WHERE _row>1" --format tsv
+uskoag-gsheetscli query SHEET_ID Contacts "SELECT DISTINCT C FROM t WHERE _row>1" --format tsv
 
 # load only part of the sheet; _row stays aligned to real sheet rows
-uskoag-sheetcli query SHEET_ID Contacts "SELECT _row, A FROM t" --range A2:D
+uskoag-gsheetscli query SHEET_ID Contacts "SELECT _row, A FROM t" --range A2:D
 ```
 
 Rules to write correct queries:
@@ -142,10 +142,10 @@ The write side of `query`, and the safe way to change existing rows (e.g. mark c
 
 ```bash
 # PREVIEW first — computes the diff, writes NOTHING:
-uskoag-sheetcli update SHEET_ID Contacts "UPDATE t SET D='yes' WHERE C='a@x.com'" --dry-run
+uskoag-gsheetscli update SHEET_ID Contacts "UPDATE t SET D='yes' WHERE C='a@x.com'" --dry-run
 
 # COMMIT — mark row 5 emailed with a date, one call:
-uskoag-sheetcli update SHEET_ID Contacts "UPDATE t SET D='yes', E='2026-07-15' WHERE _row=5"
+uskoag-gsheetscli update SHEET_ID Contacts "UPDATE t SET D='yes', E='2026-07-15' WHERE _row=5"
 ```
 
 How to use it safely:
@@ -167,10 +167,10 @@ How to use it safely:
 `read` returns only values. Use `inspect` to pull **cell notes** and **background colors** in one call:
 
 ```bash
-uskoag-sheetcli inspect SHEET_ID Sheet1                  # whole sheet: notes + colors
-uskoag-sheetcli inspect SHEET_ID Sheet1 A1:Q240          # restrict to a range
-uskoag-sheetcli inspect SHEET_ID Sheet1 --notes-only     # just notes
-uskoag-sheetcli inspect SHEET_ID Sheet1 --colors-only --format json
+uskoag-gsheetscli inspect SHEET_ID Sheet1                  # whole sheet: notes + colors
+uskoag-gsheetscli inspect SHEET_ID Sheet1 A1:Q240          # restrict to a range
+uskoag-gsheetscli inspect SHEET_ID Sheet1 --notes-only     # just notes
+uskoag-gsheetscli inspect SHEET_ID Sheet1 --colors-only --format json
 ```
 
 - **Notes** → one line per cell: `O120: <text>` (newlines escaped to `\n` in text mode).
@@ -192,26 +192,26 @@ editable in one place instead of hard-coded per cell).
 
 ```bash
 # Stylized header, then freeze it
-uskoag-sheetcli format SHEET_ID Sheet1 A1:Z1 --bg "#4a86e8" --text "#ffffff" --bold
-uskoag-sheetcli freeze SHEET_ID Sheet1 --rows 1
+uskoag-gsheetscli format SHEET_ID Sheet1 A1:Z1 --bg "#4a86e8" --text "#ffffff" --bold
+uskoag-gsheetscli freeze SHEET_ID Sheet1 --rows 1
 
 # Dropdown sourced from another sheet — the recommended pattern
-uskoag-sheetcli validate SHEET_ID Sheet1 C2:C --from-range "'Allowed Values'!A2:A"
+uskoag-gsheetscli validate SHEET_ID Sheet1 C2:C --from-range "'Allowed Values'!A2:A"
 
 # Dropdown from an inline list; --warn flags bad input instead of rejecting it
-uskoag-sheetcli validate SHEET_ID Sheet1 D2:D --list contacted,replied,bounced --warn
+uskoag-gsheetscli validate SHEET_ID Sheet1 D2:D --list contacted,replied,bounced --warn
 
 # Remove a validation rule
-uskoag-sheetcli validate SHEET_ID Sheet1 C2:C --clear
+uskoag-gsheetscli validate SHEET_ID Sheet1 C2:C --clear
 
 # highlight: color-code each allowed value so it reads at a glance (conditional format, not static)
-uskoag-sheetcli highlight SHEET_ID Sheet1 C2:C --from-range "'Allowed Values'!A2:A"   # auto palette
-uskoag-sheetcli highlight SHEET_ID Sheet1 C2:C --list contacted,replied,bounced --colors "#d9ead3,#fff2cc,#f4cccc"
-uskoag-sheetcli highlight SHEET_ID Sheet1 C2:C --colors-from-range "'Allowed Values'!A2:A"   # mirror the legend's own colors
-uskoag-sheetcli highlight SHEET_ID Sheet1 C2:C --clear
+uskoag-gsheetscli highlight SHEET_ID Sheet1 C2:C --from-range "'Allowed Values'!A2:A"   # auto palette
+uskoag-gsheetscli highlight SHEET_ID Sheet1 C2:C --list contacted,replied,bounced --colors "#d9ead3,#fff2cc,#f4cccc"
+uskoag-gsheetscli highlight SHEET_ID Sheet1 C2:C --colors-from-range "'Allowed Values'!A2:A"   # mirror the legend's own colors
+uskoag-gsheetscli highlight SHEET_ID Sheet1 C2:C --clear
 
 # bundle: validate + highlight in one call, colors the data range AND the legend
-uskoag-sheetcli validate SHEET_ID Sheet1 C2:C --from-range "'Allowed Values'!A2:A" \
+uskoag-gsheetscli validate SHEET_ID Sheet1 C2:C --from-range "'Allowed Values'!A2:A" \
     --colors "#d9ead3,#fff2cc,#f4cccc" --color-legend
 ```
 
@@ -246,9 +246,9 @@ Data → Create a filter). It turns the *option* on — no specific column crite
 human can then filter/sort interactively.
 
 ```bash
-uskoag-sheetcli filter SHEET_ID Sheet1            # whole sheet: funnel buttons on row 1
-uskoag-sheetcli filter SHEET_ID Sheet1 A1:H       # over a range; its first row is the header
-uskoag-sheetcli filter SHEET_ID Sheet1 --clear    # remove the filter
+uskoag-gsheetscli filter SHEET_ID Sheet1            # whole sheet: funnel buttons on row 1
+uskoag-gsheetscli filter SHEET_ID Sheet1 A1:H       # over a range; its first row is the header
+uskoag-gsheetscli filter SHEET_ID Sheet1 --clear    # remove the filter
 ```
 
 - Range is optional (omit → whole sheet, buttons on row 1). A range's **first row** is the header.
@@ -258,8 +258,8 @@ uskoag-sheetcli filter SHEET_ID Sheet1 --clear    # remove the filter
 ## Append
 
 ```bash
-uskoag-sheetcli append SHEET_ID Sheet1 --tsv-file newrows.tsv     # adds below existing data
-uskoag-sheetcli append SHEET_ID Sheet1 A1 --json '[["x","y"]]'    # optional start range (search anchor)
+uskoag-gsheetscli append SHEET_ID Sheet1 --tsv-file newrows.tsv     # adds below existing data
+uskoag-gsheetscli append SHEET_ID Sheet1 A1 --json '[["x","y"]]'    # optional start range (search anchor)
 ```
 Prints the range that was actually written, e.g. `SUCCESS: appended 3 rows × 2 cols to Sheet1!A21:B23`.
 
@@ -268,9 +268,9 @@ Prints the range that was actually written, e.g. `SUCCESS: appended 3 rows × 2 
 `format` is color/style; `numberformat` is the separate concept of how the value **renders**:
 
 ```bash
-uskoag-sheetcli numberformat SHEET_ID Sheet1 B2:B --type DATE                     # default yyyy-mm-dd
-uskoag-sheetcli numberformat SHEET_ID Sheet1 D2:D --type CURRENCY --pattern "$#,##0.00"
-uskoag-sheetcli numberformat SHEET_ID Sheet1 B2:B --clear
+uskoag-gsheetscli numberformat SHEET_ID Sheet1 B2:B --type DATE                     # default yyyy-mm-dd
+uskoag-gsheetscli numberformat SHEET_ID Sheet1 D2:D --type CURRENCY --pattern "$#,##0.00"
+uskoag-gsheetscli numberformat SHEET_ID Sheet1 B2:B --clear
 ```
 `--type` (required, or `--clear`): `DATE`, `TIME`, `DATE_TIME`, `NUMBER`, `PERCENT`, `CURRENCY`,
 `SCIENTIFIC`, `TEXT` — each with a sensible default `--pattern`, overridable. Rendering only — it
@@ -282,9 +282,9 @@ A date string written `RAW` (the default) just renders as text; `--as-date` pars
 real Sheets date value plus a matching number format, in one call — no locale-parsing ambiguity:
 
 ```bash
-uskoag-sheetcli write  SHEET_ID Sheet1 B2 "2026-07-24" --as-date
-uskoag-sheetcli write  SHEET_ID Sheet1 C2 "07/24/2026" --as-date --date-format MM/dd/yyyy
-uskoag-sheetcli update SHEET_ID Sheet1 "UPDATE t SET E='2026-07-24' WHERE _row=5" --as-date
+uskoag-gsheetscli write  SHEET_ID Sheet1 B2 "2026-07-24" --as-date
+uskoag-gsheetscli write  SHEET_ID Sheet1 C2 "07/24/2026" --as-date --date-format MM/dd/yyyy
+uskoag-gsheetscli update SHEET_ID Sheet1 "UPDATE t SET E='2026-07-24' WHERE _row=5" --as-date
 ```
 `--date-type DATE` (default) / `TIME` / `DATE_TIME`; `--date-format <pattern>` overrides the ISO
 default. `write`/`append` fail loudly on a value that doesn't parse (blanks are skipped, not an
@@ -294,8 +294,8 @@ unchanged. Ignores `--raw`/`--user-entered` — it writes a typed numeric value 
 ## Insert rows/columns
 
 ```bash
-uskoag-sheetcli insertcolumn SHEET_ID Sheet1 C
-uskoag-sheetcli insertrow    SHEET_ID Sheet1 3 --count 5
+uskoag-gsheetscli insertcolumn SHEET_ID Sheet1 C
+uskoag-gsheetscli insertrow    SHEET_ID Sheet1 3 --count 5
 ```
 Shifts everything at/after the given column/row; existing formulas/validation/formatting shift with it.
 
@@ -303,7 +303,7 @@ Shifts everything at/after the given column/row; existing formulas/validation/fo
 
 Everything `inspect` can see (notes, color) plus value/formula/numberFormat, per cell, in one call:
 ```bash
-uskoag-sheetcli read SHEET_ID Sheet1 A1:C3 --rich --format json
+uskoag-gsheetscli read SHEET_ID Sheet1 A1:C3 --rich --format json
 ```
 `--format json` → real nested objects; `kv`/`tsv`/`csv` embed the same object as compact JSON per
 cell (fields with nothing to report — no note, white/no-fill background — are simply omitted).
@@ -316,8 +316,8 @@ just the shape: each sheet's headers (with any cell notes as column comments) pl
 **diversified** data sample (not just the first N rows):
 
 ```bash
-uskoag-sheetcli describeschema SHEET_ID                                     # every sheet
-uskoag-sheetcli describeschema SHEET_ID --sheets Contacts --format md
+uskoag-gsheetscli describeschema SHEET_ID                                     # every sheet
+uskoag-gsheetscli describeschema SHEET_ID --sheets Contacts --format md
 ```
 `--sample-rows`/`--sample-size`/`--uniqueness-col` control the sampling (one random row per
 distinct value in the uniqueness column, topped up randomly if there aren't enough distinct
@@ -340,10 +340,10 @@ Add `-v` to also get the Java stack trace on stderr.
 The spreadsheet must be on the local allowlist before use. Manage it via the CLI (no manual XML editing):
 
 ```bash
-uskoag-sheetcli grant --write 1Bv0...Ge7Q "My Sheet"   # write implies read
-uskoag-sheetcli grant --read  1Bv0...Ge7Q "Readonly"
-uskoag-sheetcli listperms
-uskoag-sheetcli revoke 1Bv0...Ge7Q
+uskoag-gsheetscli grant --write 1Bv0...Ge7Q "My Sheet"   # write implies read
+uskoag-gsheetscli grant --read  1Bv0...Ge7Q "Readonly"
+uskoag-gsheetscli listperms
+uskoag-gsheetscli revoke 1Bv0...Ge7Q
 ```
 
 Config file (still editable by hand if preferred):

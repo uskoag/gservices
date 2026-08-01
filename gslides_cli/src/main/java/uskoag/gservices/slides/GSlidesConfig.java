@@ -4,7 +4,7 @@ package uskoag.gservices.slides;
  * What is left of this tool's own allowlist, which is a set of redirects and nothing else.
  *
  * <p>It used to be {@code GSlidesCli.xml}, an on-disk list of deck ids gating every verb — the same
- * shape uskoag-sheetcli had, and retired for the same reason. There is now one enforcement point, and
+ * shape uskoag-gsheetscli had, and retired for the same reason. There is now one enforcement point, and
  * a second one is worse than none: two lists disagree, and the moment they do, the tool is either
  * refusing work the wallet permits or permitting work the wallet would have questioned. The wallet
  * wins because it is the only one the caller cannot edit — this file sat in plain XML beside the

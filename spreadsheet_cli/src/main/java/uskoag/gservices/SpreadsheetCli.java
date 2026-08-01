@@ -50,7 +50,7 @@ import java.util.stream.Stream;
  * Command-line tool for Google Sheets operations.
  *
  * Usage:
- *   uskoag-sheetcli [-v] [--quiet] <command> [args...]
+ *   uskoag-gsheetscli [-v] [--quiet] <command> [args...]
  *
  * Commands:
  *   read    <id> <sheet> <range> [<range2>...]  [--format kv|tsv|csv|json] [--formulas|--render R|--both]
@@ -267,7 +267,7 @@ public class SpreadsheetCli {
                 default -> {
                     logError("Unknown command: " + command);
                     logError("Valid: read inspect query update write append clear listsheet createsheet renamesheet freeze insertcolumn insertrow deletecolumn format numberformat validate highlight filter describeschema grant revoke listperms help");
-                    logError("Run 'uskoag-sheetcli --help' for usage.");
+                    logError("Run 'uskoag-gsheetscli --help' for usage.");
                     System.exit(1);
                 }
             }
@@ -1991,10 +1991,10 @@ public class SpreadsheetCli {
     }
 
     private static void printHelp(java.io.PrintStream out) {
-        out.println("uskoag-sheetcli - Google Sheets from the command line");
+        out.println("uskoag-gsheetscli - Google Sheets from the command line");
         out.println();
         out.println("USAGE");
-        out.println("  uskoag-sheetcli [-v|--verbose] [--quiet] <command> [args...]");
+        out.println("  uskoag-gsheetscli [-v|--verbose] [--quiet] <command> [args...]");
         out.println();
         out.println("COMMANDS");
         out.println("  read    <id> <sheet> <range> [<range2> ...]   Read a cell / range / several ranges");
@@ -2202,47 +2202,47 @@ public class SpreadsheetCli {
         out.println("  3 API calls total, regardless of how many sheets are described.");
         out.println();
         out.println("EXAMPLES");
-        out.println("  uskoag-sheetcli read  ID Sheet1 A1");
-        out.println("  uskoag-sheetcli read  ID Sheet1 A1:H20 --format tsv");
-        out.println("  uskoag-sheetcli read  ID Sheet1 A1:C3 E1:F2 --format csv");
-        out.println("  uskoag-sheetcli read  ID Sheet1 C1 --formulas                # \"=SUM(A1:A9)\" instead of its value");
-        out.println("  uskoag-sheetcli read  ID Sheet1 A1:C3 --both --format tsv    # {\"formula\":..,\"value\":..} per cell");
-        out.println("  uskoag-sheetcli read  ID Sheet1 A1:C3 --rich --format json    # value+formula+note+color+numberFormat");
-        out.println("  uskoag-sheetcli query ID Contacts \"SELECT _row, C, D FROM t WHERE _row>1 AND D=''\"");
-        out.println("  uskoag-sheetcli query ID Contacts \"SELECT C, COUNT(*) n FROM t GROUP BY C HAVING COUNT(*)>1\"  # dupes");
-        out.println("  uskoag-sheetcli query ID Contacts \"SELECT DISTINCT C FROM t WHERE _row>1\" --format tsv");
-        out.println("  uskoag-sheetcli update ID Contacts \"UPDATE t SET D='yes' WHERE C='a@x.com'\" --dry-run  # preview");
-        out.println("  uskoag-sheetcli update ID Contacts \"UPDATE t SET D='yes',E='2026-07-15' WHERE _row=5\"   # commit");
-        out.println("  uskoag-sheetcli inspect ID Sheet1 A1:Q240                    # notes + color regions");
-        out.println("  uskoag-sheetcli inspect ID Sheet1 --colors-only --format json");
-        out.println("  uskoag-sheetcli write ID Sheet1 B2 \"+91 80 4656 3000\"        # stored literally (RAW)");
-        out.println("  uskoag-sheetcli write ID Sheet1 C1 \"=SUM(A1:A9)\" --user-entered");
-        out.println("  uskoag-sheetcli write ID Sheet1 A1 --tsv-file grid.tsv        # bulk 2-D write");
-        out.println("  uskoag-sheetcli write ID Sheet1 B2 \"2026-07-24\" --as-date     # real date, not a string");
-        out.println("  uskoag-sheetcli write ID Sheet1 C2 \"07/24/2026\" --as-date --date-format MM/dd/yyyy");
-        out.println("  uskoag-sheetcli append ID Sheet1 --csv-file newrows.csv");
-        out.println("  uskoag-sheetcli append ID Sheet1 --tsv $'2026-07-24' --as-date");
-        out.println("  uskoag-sheetcli clear ID Sheet1 A1:C3");
-        out.println("  uskoag-sheetcli format ID Sheet1 A1:Z1 --bg #4a86e8 --text #ffffff --bold  # stylized header");
-        out.println("  uskoag-sheetcli numberformat ID Sheet1 B2:B --type DATE                     # yyyy-mm-dd");
-        out.println("  uskoag-sheetcli numberformat ID Sheet1 D2:D --type CURRENCY --pattern \"$#,##0.00\"");
-        out.println("  uskoag-sheetcli numberformat ID Sheet1 B2:B --clear");
-        out.println("  uskoag-sheetcli freeze ID Sheet1 --rows 1");
-        out.println("  uskoag-sheetcli insertrow ID Sheet1 3                          # shift row 3+ down by one");
-        out.println("  uskoag-sheetcli validate ID Sheet1 C2:C --from-range \"'Allowed Values'!A2:A\"    # dropdown from another sheet");
-        out.println("  uskoag-sheetcli validate ID Sheet1 D2:D --list contacted,replied,bounced --warn");
-        out.println("  uskoag-sheetcli validate ID Sheet1 C2:C --clear");
-        out.println("  uskoag-sheetcli validate ID Sheet1 C2:C --from-range \"'Allowed Values'!A2:A\" \\");
+        out.println("  uskoag-gsheetscli read  ID Sheet1 A1");
+        out.println("  uskoag-gsheetscli read  ID Sheet1 A1:H20 --format tsv");
+        out.println("  uskoag-gsheetscli read  ID Sheet1 A1:C3 E1:F2 --format csv");
+        out.println("  uskoag-gsheetscli read  ID Sheet1 C1 --formulas                # \"=SUM(A1:A9)\" instead of its value");
+        out.println("  uskoag-gsheetscli read  ID Sheet1 A1:C3 --both --format tsv    # {\"formula\":..,\"value\":..} per cell");
+        out.println("  uskoag-gsheetscli read  ID Sheet1 A1:C3 --rich --format json    # value+formula+note+color+numberFormat");
+        out.println("  uskoag-gsheetscli query ID Contacts \"SELECT _row, C, D FROM t WHERE _row>1 AND D=''\"");
+        out.println("  uskoag-gsheetscli query ID Contacts \"SELECT C, COUNT(*) n FROM t GROUP BY C HAVING COUNT(*)>1\"  # dupes");
+        out.println("  uskoag-gsheetscli query ID Contacts \"SELECT DISTINCT C FROM t WHERE _row>1\" --format tsv");
+        out.println("  uskoag-gsheetscli update ID Contacts \"UPDATE t SET D='yes' WHERE C='a@x.com'\" --dry-run  # preview");
+        out.println("  uskoag-gsheetscli update ID Contacts \"UPDATE t SET D='yes',E='2026-07-15' WHERE _row=5\"   # commit");
+        out.println("  uskoag-gsheetscli inspect ID Sheet1 A1:Q240                    # notes + color regions");
+        out.println("  uskoag-gsheetscli inspect ID Sheet1 --colors-only --format json");
+        out.println("  uskoag-gsheetscli write ID Sheet1 B2 \"+91 80 4656 3000\"        # stored literally (RAW)");
+        out.println("  uskoag-gsheetscli write ID Sheet1 C1 \"=SUM(A1:A9)\" --user-entered");
+        out.println("  uskoag-gsheetscli write ID Sheet1 A1 --tsv-file grid.tsv        # bulk 2-D write");
+        out.println("  uskoag-gsheetscli write ID Sheet1 B2 \"2026-07-24\" --as-date     # real date, not a string");
+        out.println("  uskoag-gsheetscli write ID Sheet1 C2 \"07/24/2026\" --as-date --date-format MM/dd/yyyy");
+        out.println("  uskoag-gsheetscli append ID Sheet1 --csv-file newrows.csv");
+        out.println("  uskoag-gsheetscli append ID Sheet1 --tsv $'2026-07-24' --as-date");
+        out.println("  uskoag-gsheetscli clear ID Sheet1 A1:C3");
+        out.println("  uskoag-gsheetscli format ID Sheet1 A1:Z1 --bg #4a86e8 --text #ffffff --bold  # stylized header");
+        out.println("  uskoag-gsheetscli numberformat ID Sheet1 B2:B --type DATE                     # yyyy-mm-dd");
+        out.println("  uskoag-gsheetscli numberformat ID Sheet1 D2:D --type CURRENCY --pattern \"$#,##0.00\"");
+        out.println("  uskoag-gsheetscli numberformat ID Sheet1 B2:B --clear");
+        out.println("  uskoag-gsheetscli freeze ID Sheet1 --rows 1");
+        out.println("  uskoag-gsheetscli insertrow ID Sheet1 3                          # shift row 3+ down by one");
+        out.println("  uskoag-gsheetscli validate ID Sheet1 C2:C --from-range \"'Allowed Values'!A2:A\"    # dropdown from another sheet");
+        out.println("  uskoag-gsheetscli validate ID Sheet1 D2:D --list contacted,replied,bounced --warn");
+        out.println("  uskoag-gsheetscli validate ID Sheet1 C2:C --clear");
+        out.println("  uskoag-gsheetscli validate ID Sheet1 C2:C --from-range \"'Allowed Values'!A2:A\" \\");
         out.println("      --colors \"#d9ead3,#fff2cc,#f4cccc\" --color-legend   # dropdown + data colored + legend colored, one call");
-        out.println("  uskoag-sheetcli highlight ID Sheet1 C2:C --from-range \"'Allowed Values'!A2:A\"   # auto palette");
-        out.println("  uskoag-sheetcli highlight ID Sheet1 C2:C --list contacted,replied,bounced --colors \"#d9ead3,#fff2cc,#f4cccc\"");
-        out.println("  uskoag-sheetcli highlight ID Sheet1 C2:C --colors-from-range \"'Allowed Values'!A2:A\"   # mirror the legend's own colors");
-        out.println("  uskoag-sheetcli highlight ID Sheet1 C2:C --clear");
-        out.println("  uskoag-sheetcli filter ID Sheet1                             # filter funnels on the header row");
-        out.println("  uskoag-sheetcli filter ID Sheet1 A1:H --clear");
-        out.println("  uskoag-sheetcli describeschema ID                            # every sheet, default sampling");
-        out.println("  uskoag-sheetcli describeschema ID --sheets Contacts --sample-size 8 --format md");
-        out.println("  uskoag-sheetcli describeschema ID --sheets Contacts --header-row 2 --col-end BQ");
+        out.println("  uskoag-gsheetscli highlight ID Sheet1 C2:C --from-range \"'Allowed Values'!A2:A\"   # auto palette");
+        out.println("  uskoag-gsheetscli highlight ID Sheet1 C2:C --list contacted,replied,bounced --colors \"#d9ead3,#fff2cc,#f4cccc\"");
+        out.println("  uskoag-gsheetscli highlight ID Sheet1 C2:C --colors-from-range \"'Allowed Values'!A2:A\"   # mirror the legend's own colors");
+        out.println("  uskoag-gsheetscli highlight ID Sheet1 C2:C --clear");
+        out.println("  uskoag-gsheetscli filter ID Sheet1                             # filter funnels on the header row");
+        out.println("  uskoag-gsheetscli filter ID Sheet1 A1:H --clear");
+        out.println("  uskoag-gsheetscli describeschema ID                            # every sheet, default sampling");
+        out.println("  uskoag-gsheetscli describeschema ID --sheets Contacts --sample-size 8 --format md");
+        out.println("  uskoag-gsheetscli describeschema ID --sheets Contacts --header-row 2 --col-end BQ");
         out.println();
         out.println("OUTPUT CONTRACT");
         out.println("  stdout = command data only (values / sheet list / a single SUCCESS: line).");

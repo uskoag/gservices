@@ -4,7 +4,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
-/** Mutating arg-list helpers, matching uskoag-sheetcli's parsing style. */
+/** Mutating arg-list helpers, matching uskoag-gsheetscli's parsing style. */
 public final class Args {
 
     private Args() {}

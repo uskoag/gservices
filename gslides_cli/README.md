@@ -6,7 +6,7 @@ Artifact `io.github.uskoag:uskoag-gservices-gslides_cli:1.0` · package `uskoag.
 
 ## Why it is shaped this way
 
-`uskoag-sheetcli` works because a sheet has one unambiguous primitive: a **cell**, addressed by A1 notation, carrying value, formula, style, note, number format. Every verb is "get or set attribute X over address Y", nothing is hidden, and the tool consequently serves workflows nobody anticipated when it was written.
+`uskoag-gsheetscli` works because a sheet has one unambiguous primitive: a **cell**, addressed by A1 notation, carrying value, formula, style, note, number format. Every verb is "get or set attribute X over address Y", nothing is hidden, and the tool consequently serves workflows nobody anticipated when it was written.
 
 This module applies the same discipline to slides. Expose the primitives; add a small number of higher-level abstractions on top so ordinary work is not cumbersome. Primitives give versatility, abstractions give ergonomics, and neither substitutes for the other.
 
@@ -50,7 +50,7 @@ The layering matters, because index arithmetic is where an agent goes wrong — 
 
 HTML is the level-1 format rather than markdown because it is already this office's rich-text input (`uskoag-gmailcli --html`), needs no new dependency (jsoup was already here), and unlike markdown can express underline, colour, size and font.
 
-The same three-level shape will recur in a Docs CLI and in rich cell text for sheets — `CellData.textFormatRuns` is the identical model and `uskoag-sheetcli` does not yet expose it. `RichText`/`RichSpan`/`RichPara` are deliberately free of any Google type so they can be promoted to a shared module **when a second write-consumer actually exists**, not before.
+The same three-level shape will recur in a Docs CLI and in rich cell text for sheets — `CellData.textFormatRuns` is the identical model and `uskoag-gsheetscli` does not yet expose it. `RichText`/`RichSpan`/`RichPara` are deliberately free of any Google type so they can be promoted to a shared module **when a second write-consumer actually exists**, not before.
 
 ## Verbs
 
