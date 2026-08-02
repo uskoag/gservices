@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.github.uskoag</groupId>
+        <artifactId>uskoag-gservices-parent</artifactId>
+        <version>1.0</version>
+    </parent>
+
+    <artifactId>uskoag-gservices-gsheetsdb</artifactId>
+    <packaging>jar</packaging>
+
+    <description>A Google Spreadsheet as a small typed database. DataHelper-annotated classes describe the
+        tabs; an in-process H2 mirror answers the queries; writes are batched back to the Sheets API on
+        flush. Modelled on the @ArcadeData/TypeDef ergonomics of uskoag-gdrive-core, without ArcadeDB.</description>
+
+    <properties>
+        <datahelper.ver>1.0</datahelper.ver>
+        <datahelper.processor.ver>1.0</datahelper.processor.ver>
+        <compiler.plugin.ver>3.13.0</compiler.plugin.ver>
+        <junit.ver>5.11.4</junit.ver>
+        <surefire.plugin.ver>3.5.4</surefire.plugin.ver>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>io.github.uskoag</groupId>
+            <artifactId>uskoag-gservices-sheets</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.google.apis</groupId>
+            <artifactId>google-api-services-sheets</artifactId>
+            <version>${google.sheets.ver}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.google.api-client</groupId>
+            <artifactId>google-api-client</artifactId>
+            <version>${google.api.client.ver}</version>
+        </dependency>
+
+        <!-- The in-process SQL engine the whole query side runs on. -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <version>${h2.ver}</version>
+        </dependency>
+
+        <!--
+          DataHelper, base + annotations.
+
+          `base` is what this library actually compiles against: DataHelper_I, Field_I, and the
+          reflection-free property accessors every entity exposes. `annotations` carries @Data and is
+          here so a consumer gets it transitively — this library defines no models of its own, the
+          consumer's model classes are the ones that get annotated.
+
+          Deliberately NOT xyz-jphil-arcadedb-datahelper. Its generated _A base hard-implements
+          ArcadeDoc_I, which binds com.arcadedb.database.Document/Database/Edge/Vertex/RID — so the
+          @ArcadeData route would drag arcadedb-engine onto the classpath of every consumer, for a
+          graph engine nothing here ever calls. The base @Data annotation generates a strict superset
+          of what this library needs (it also emits the _R immutable record projection, which
+          @ArcadeData does not). See prp/01-prp.01.design.md for the full audit.
+
+          Note also: no wallet dependency. gservices *libraries* stay credential-free; the caller
+          hands us a configured Sheets instance and owns the question of where it came from.
+        -->
+        <dependency>
+            <groupId>io.github.xyz-jphil</groupId>
+            <artifactId>xyz-jphil-datahelper-base</artifactId>
+            <version>${datahelper.ver}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.xyz-jphil</groupId>
+            <artifactId>xyz-jphil-datahelper-annotations</artifactId>
+            <version>${datahelper.ver}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${junit.ver}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!--
+              Two test-compile passes, deliberately. Main needs none — this library declares no
+              @Data classes — but the test model does, and a single pass cannot build it from clean.
+              The same trap is documented at length in uskoag-gdrive-core/pom.xml. It is reproduced
+              here because it costs hours to rediscover and, crucially, because ANY CONSUMER OF THIS
+              LIBRARY NEEDS THE SAME BLOCK for whichever source root holds their model classes.
+
+              Two separate things have to be true, and by default neither is:
+
+              (1) JDK 23 stopped running annotation processing implicitly, so javac now needs an
+                  explicit -proc:full/-proc:only even when a processor path is set. Without it the
+                  @Data processor is skipped in silence — no error, no note, just no output.
+
+              (2) Even with processing enabled, one pass still fails. Code outside the model package
+                  imports the generated types by name (Treaty_R, and `import static ...Treaty_IR.*`
+                  for the $field symbols). Those imports are unresolvable on the first round, javac
+                  reports them and gives up before any processing round runs, so the very files that
+                  would satisfy the imports are never generated.
+
+              Pass 1 runs the processor over the model package only, where nothing references a
+              generated type, and emits the _IR/_I/_R/_A sources. Pass 2 compiles everything with
+              processing off, by which point the imports resolve.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>${compiler.plugin.ver}</version>
+                <executions>
+                    <execution>
+                        <id>generate-test-datahelper-accessors</id>
+                        <phase>generate-test-sources</phase>
+                        <goals>
+                            <goal>testCompile</goal>
+                        </goals>
+                        <configuration>
+                            <proc>only</proc>
+                            <!--
+                              Explicit, not defaulted. Left to itself this execution emits no -s at
+                              all, so the processor writes the sources into target/test-classes — and
+                              the second execution's rebuild helper clears that directory before it
+                              compiles, deleting the sources it is about to need.
+                            -->
+                            <generatedTestSourcesDirectory>${project.build.directory}/generated-test-sources/test-annotations</generatedTestSourcesDirectory>
+                            <testIncludes>
+                                <testInclude>uskoag/gservices/sheetsdb/testmodel/*.java</testInclude>
+                            </testIncludes>
+                            <annotationProcessorPaths>
+                                <path>
+                                    <groupId>io.github.xyz-jphil</groupId>
+                                    <artifactId>xyz-jphil-datahelper-processor</artifactId>
+                                    <version>${datahelper.processor.ver}</version>
+                                </path>
+                            </annotationProcessorPaths>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>default-testCompile</id>
+                        <configuration>
+                            <proc>none</proc>
+                            <!--
+                              Aimed at a scratch directory it will never fill. The plugin clears its
+                              generatedTestSourcesDirectory before compiling, and on the default value
+                              that is the directory pass 1 just wrote to. Pass 1's output stays a
+                              test-compile source root regardless, so redirecting this one costs
+                              nothing.
+                            -->
+                            <generatedTestSourcesDirectory>${project.build.directory}/generated-test-sources/unused-second-pass</generatedTestSourcesDirectory>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>${surefire.plugin.ver}</version>
+            </plugin>
+        </plugins>
+    </build>
+</project>

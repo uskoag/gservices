@@ -1190,6 +1190,18 @@ public class GmailCli {
     }
 
     /**
+     * Build every batch here, never via the no-arg {@code gmail.batch()} — that delegates to
+     * {@code batch(null)}, leaving the multipart envelope the one request with no initializer and so
+     * no {@code X-Wallet-Grant} header. Harmless direct to Google (the sub-requests carry their own
+     * auth), fatal through the wallet: the envelope arrives anonymous and is refused 403 before the
+     * path is ever classified, so the wallet reports "locked or expired" while unlocked and logs
+     * nothing to the audit.
+     */
+    static BatchRequest newBatch() {
+        return gmail.batch(gmail.getRequestFactory().getInitializer());
+    }
+
+    /**
      * Fetches many messages via chunked {@code gmail.batch()} (≤100 sub-requests/HTTP batch).
      * Preserves input order (including duplicate ids); per-id failures are captured inline rather than
      * aborting the batch. {@code metadataHeaders} applies only to {@code format="metadata"}.
@@ -1201,7 +1213,7 @@ public class GmailCli {
         final int CHUNK = 100;
         for (int start = 0; start < items.size(); start += CHUNK) {
             int end = Math.min(start + CHUNK, items.size());
-            BatchRequest batch = gmail.batch();
+            var batch = newBatch();
             for (int i = start; i < end; i++) {
                 final BatchItem<Message> item = items.get(i);
                 Gmail.Users.Messages.Get get = gmail.users().messages().get(USER, item.id).setFormat(format);
@@ -1225,7 +1237,7 @@ public class GmailCli {
         final int CHUNK = 100;
         for (int start = 0; start < items.size(); start += CHUNK) {
             int end = Math.min(start + CHUNK, items.size());
-            BatchRequest batch = gmail.batch();
+            var batch = newBatch();
             for (int i = start; i < end; i++) {
                 final BatchItem<com.google.api.services.gmail.model.Thread> item = items.get(i);
                 gmail.users().threads().get(USER, item.id).setFormat("full")

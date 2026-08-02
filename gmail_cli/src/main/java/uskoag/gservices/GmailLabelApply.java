@@ -1,6 +1,5 @@
 package uskoag.gservices;
 
-import com.google.api.client.googleapis.batch.BatchRequest;
 import com.google.api.client.googleapis.batch.json.JsonBatchCallback;
 import com.google.api.client.googleapis.json.GoogleJsonError;
 import com.google.api.client.http.HttpHeaders;
@@ -90,7 +89,7 @@ final class GmailLabelApply {
         if (!removeIds.isEmpty()) req.setRemoveLabelIds(removeIds);
         for (int start = 0; start < items.size(); start += CHUNK) {
             int end = Math.min(start + CHUNK, items.size());
-            BatchRequest batch = gmail.batch();
+            var batch = newBatch();
             for (int i = start; i < end; i++) {
                 final GmailCli.BatchItem<Object> item = items.get(i);
                 gmail.users().messages().modify(USER, item.id, req).queue(batch, new JsonBatchCallback<Message>() {
@@ -109,7 +108,7 @@ final class GmailLabelApply {
         if (!removeIds.isEmpty()) req.setRemoveLabelIds(removeIds);
         for (int start = 0; start < items.size(); start += CHUNK) {
             int end = Math.min(start + CHUNK, items.size());
-            BatchRequest batch = gmail.batch();
+            var batch = newBatch();
             for (int i = start; i < end; i++) {
                 final GmailCli.BatchItem<Object> item = items.get(i);
                 gmail.users().threads().modify(USER, item.id, req).queue(batch, new JsonBatchCallback<com.google.api.services.gmail.model.Thread>() {

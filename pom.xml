@@ -23,6 +23,7 @@
         <module>spreadsheet_cli</module>
         <module>gmail_cli</module>
         <module>gslides_cli</module>
+        <module>gsheetsdb</module>
     </modules>
 
     <!--
