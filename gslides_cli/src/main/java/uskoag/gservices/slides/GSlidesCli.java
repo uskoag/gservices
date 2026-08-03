@@ -13,6 +13,9 @@ public class GSlidesCli {
 
     public static void main(String[] args) {
         Out.initStreams();
+        // What the wallet's approval dialog will show — the directory this ran in and this command. The
+        // only route those facts have, since Windows does not hand a JVM its own argv.
+        uskoag.gservices.Caller.record("uskoag-gslides", args);
         var a = new ArrayList<>(List.of(args));
 
         Out.verbose = Args.flag(a, "-v", "--verbose");

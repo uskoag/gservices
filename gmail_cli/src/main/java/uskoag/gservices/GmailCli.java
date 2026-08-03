@@ -172,6 +172,9 @@ public class GmailCli {
 
     public static void main(String[] args) {
         enableUnicodeOutput();
+        // What the wallet's approval dialog will show. Recorded before the first thing that could reach
+        // the wallet, and it is the only route these facts have: Windows does not give a JVM its own argv.
+        uskoag.gservices.Caller.record("uskoag-gmailcli", args);
 
         Args a;
         try {

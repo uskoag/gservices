@@ -113,6 +113,12 @@ public class SpreadsheetCli {
         // scripts) into a lone 0x96 byte or '?'.  Pin both streams to UTF-8.
         System.setOut(new java.io.PrintStream(new java.io.FileOutputStream(java.io.FileDescriptor.out), true, StandardCharsets.UTF_8));
         System.setErr(new java.io.PrintStream(new java.io.FileOutputStream(java.io.FileDescriptor.err), true, StandardCharsets.UTF_8));
+
+        // Before anything else, because it is what the wallet's approval dialog shows and a request that
+        // arrives before this is recorded is a request nobody can identify. Windows will not tell the
+        // wallet what this process is running — ProcessHandle has no argv for its own process there — so
+        // this is the only route the facts have. Secrets are replaced inside Caller; see its notes.
+        uskoag.gservices.Caller.record("uskoag-gsheetscli", args);
         try {
             List<String> argList = new ArrayList<>(List.of(args));
 
