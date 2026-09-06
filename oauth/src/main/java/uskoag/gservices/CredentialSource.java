@@ -35,5 +35,19 @@ public interface CredentialSource {
         return 0;
     }
 
+    /**
+     * The accounts this source can serve, when it can enumerate them at all.
+     *
+     * <p>Empty means "cannot say", never "none". The app-key default has no inventory to offer, and a
+     * wallet that is locked or not running cannot be asked for one. So a caller listing accounts has to
+     * report which of the two it is — {@link #ready()} tells it apart — rather than printing an empty
+     * list: an empty inventory of a credential store reads as loss, and a tool that says "no accounts"
+     * about a wallet holding six of them has reported a fault that does not exist.
+     */
+    default java.util.List<String> accounts() {
+        return java.util.List.of();
+    }
+
+
     ServiceAccess access(AccessSpec spec) throws IOException;
 }
