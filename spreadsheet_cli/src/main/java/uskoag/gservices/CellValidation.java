@@ -7,6 +7,7 @@ import com.google.api.services.sheets.v4.model.GridRange;
 import com.google.api.services.sheets.v4.model.Request;
 import com.google.api.services.sheets.v4.model.SetDataValidationRequest;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Stream;
 
@@ -34,5 +35,28 @@ public class CellValidation {
 
     public static Request buildClearRequest(GridRange range) {
         return new Request().setSetDataValidation(new SetDataValidationRequest().setRange(range));
+    }
+
+    /**
+     * One ONE_OF_RANGE rule per row, {ROW} in `template` substituted with that row's own 1-based
+     * number, each applied to a single-row GridRange. Needed because — unlike conditional
+     * formatting — a data-validation rule set once over a multi-row range does NOT shift its
+     * formula's relative references per row; every row would otherwise evaluate the same
+     * top-anchor cell. This is the per-row expansion that gives cascading/dependent dropdowns.
+     */
+    public static List<Request> buildPerRowRequests(int sheetId, int startCol, int endCol, int startRow, int endRow,
+                                                      String template, boolean strict) {
+        var requests = new ArrayList<Request>();
+        for (int row = startRow; row <= endRow; row++) {
+            var formula = "=" + template.replace("{ROW}", String.valueOf(row));
+            var condition = new BooleanCondition().setType("ONE_OF_RANGE")
+                .setValues(List.of(new ConditionValue().setUserEnteredValue(formula)));
+            var rule = new DataValidationRule().setCondition(condition).setStrict(strict).setShowCustomUi(true);
+            var rowRange = new GridRange().setSheetId(sheetId)
+                .setStartRowIndex(row - 1).setEndRowIndex(row)
+                .setStartColumnIndex(startCol - 1).setEndColumnIndex(endCol);
+            requests.add(new Request().setSetDataValidation(new SetDataValidationRequest().setRange(rowRange).setRule(rule)));
+        }
+        return requests;
     }
 }

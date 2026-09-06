@@ -97,6 +97,7 @@ uskoag-gmailcli <command> [args] --email <you@gmail.com> [--app-key <key>] [--js
 | `drafts` | List existing drafts |
 | `draft-read <draftId>` | Read one draft |
 | `draft` | **Create** a draft (never sends) |
+| `draft-delete <draftId…>` | Delete draft(s). **Labelling a draft's message `TRASH` does NOT remove it** — the draft record survives and keeps listing, so use this |
 | `attachment <messageId> <attachmentId>` | Download an attachment to disk |
 
 ### Global flags
@@ -104,9 +105,13 @@ uskoag-gmailcli <command> [args] --email <you@gmail.com> [--app-key <key>] [--js
 | Flag | Meaning |
 |---|---|
 | `--email`, `-e <email>` | Gmail account (**required**) |
-| `--app-key`, `-k <key>` | App-key encrypting stored tokens; prompted if omitted |
 | `--json` | Machine-readable JSON output |
 | `--verbose`, `-v` | Log progress to stderr |
+
+> ⚠️ **`--app-key`/`-k` is GONE.** Credentials now live in the USK OAG GServices Wallet, which this tool
+> reaches over loopback and which holds every token itself. Pass `--email` and nothing else. A secret on
+> argv lands in shell history and AI transcripts, which is why it was removed. **Sections below that still
+> mention an app-key are stale and are being rewritten** — ignore `-k` wherever it appears in this file.
 
 ### `list` / `search` flags
 
@@ -176,9 +181,74 @@ anywhere a body is emitted. It only affects the `body` field; headers, snippet, 
 | `--body-file <path>` | Read body from a file |
 | `--body-stdin` | Read body from standard input |
 | `--html` | Treat the body as HTML |
-| `--attach <file>` | Attach a file (repeatable) |
+| `--attach <file>` | Attach a file, shown below the message (repeatable) |
+| `--inline <img>` | Embed an image **inside** the HTML body, referenced `cid:<filename>` (repeatable) — see below |
 | `--reply-to <messageId>` | Make it a reply: inherits thread, recipient, `Re:` subject, and `In-Reply-To`/`References` |
 | `--thread <threadId>` | Attach the draft to a specific thread |
+
+### Inline images in an HTML body — `--inline`
+
+Use this when a picture has to appear **in** the message (a comparison table, a screenshot beside the
+text) rather than as an attachment a reader may never open.
+
+Reference each image from your HTML by its **plain filename**, prefixed `cid:`. The path you pass is
+not the reference; only the file name is:
+
+```bash
+uskoag-gmailcli draft -e you@gmail.com --to them@x.com -s "Comparison" \
+  --body-file body.html --html \
+  --inline ./shots/before.jpg \
+  --inline ./shots/after.jpg \
+  --attach ./report.pdf
+```
+
+```html
+<table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;max-width:620px;">
+<tr>
+  <td width="50%" valign="top" style="padding:8px;border:1px solid #ccc;">
+    <img src="cid:before.jpg" width="290" style="display:block;width:100%;max-width:290px;height:auto;border:0;">
+    <div style="font:13px/1.45 Arial,sans-serif;padding-top:8px;">Before.</div>
+  </td>
+  <td width="50%" valign="top" style="padding:8px;border:1px solid #ccc;">
+    <img src="cid:after.jpg" width="290" style="display:block;width:100%;max-width:290px;height:auto;border:0;">
+    <div style="font:13px/1.45 Arial,sans-serif;padding-top:8px;">After.</div>
+  </td>
+</tr>
+</table>
+```
+
+**The MIME it builds**, which is the only shape Gmail will render:
+
+```
+multipart/mixed                      (only when --attach is also given)
+├── multipart/related                (Content-Type restated on the wrapper part — see below)
+│   ├── text/html                    the body, first part
+│   ├── image/jpeg   Content-ID: <before.jpg>   Content-Disposition: inline
+│   └── image/jpeg   Content-ID: <after.jpg>    Content-Disposition: inline
+└── application/pdf  Content-Disposition: attachment
+```
+
+**Four things Gmail requires. Miss any one and it silently renders nothing:**
+
+1. `Content-ID` wrapped in angle brackets — `<before.jpg>`, not `before.jpg`.
+2. `Content-Disposition: inline`, not `attachment`.
+3. Each image part declaring its own `Content-Type: <mime>; name="<file>"`.
+4. **When `multipart/related` is nested inside `multipart/mixed`, the wrapper body part must restate
+   `Content-Type: multipart/related`.** This is the one that is easy to miss and produces no error —
+   just a message with no pictures in it.
+
+All four are handled for you. The reference implementation this follows is
+`GmailDocxSender.createEmail_gmailVersion` in `uskoag-reports/bulk_email_sender`; read that before changing
+any MIME assembly here.
+
+**Do not reach for `data:` URIs instead** — Gmail does not render them for the recipient.
+
+**Notes**
+- Content type is derived from the file name, so a `.pdf` arrives as `application/pdf` and a `.jpg` as
+  `image/jpeg` rather than everything defaulting to `application/octet-stream`.
+- Keep images small (resize to the width you actually display, e.g. 560–620px). Inline images are
+  base64-encoded into the request, so a few 30–80KB images is the right order of magnitude.
+- Two files with the same base name collide in the `cid:` namespace — rename before passing them.
 
 ### `attachment` flags
 

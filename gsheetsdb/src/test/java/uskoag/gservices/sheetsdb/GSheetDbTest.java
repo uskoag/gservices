@@ -132,8 +132,8 @@ class GSheetDbTest {
         Treaty t = query(db, Treaty.DEF).byKey("UAN-1997-03").ratified(false);
         upsert(db, Treaty.DEF).save(t);
 
-        var cells = cellsAt(db, "'Treaty'!D2:G2");        // year D, ratified E, signedOn F, status G
-        assertEquals(Boolean.FALSE, cells.get(1),
+        var cells = cellsAt(db, "'Treaty'!E2:E2");         // ratified is column E, and the only change
+        assertEquals(Boolean.FALSE, cells.get(0),
                 "written back as a real boolean, not the string \"false\" — with RAW that is what "
                 + "keeps the cell a checkbox rather than turning it into text");
     }
@@ -287,7 +287,7 @@ class GSheetDbTest {
     // ---- writes ----------------------------------------------------------------
 
     @Test
-    @DisplayName("a save covers only the fields it owns, split around the undeclared column")
+    @DisplayName("a save covers the fields it changed, and no others")
     void updateExisting() throws SQLException {
         Treaty t = query(db, Treaty.DEF).byKey("UAN-2001-11");
         t.title("Revised Accord on Water").status("SIGNED");
@@ -295,10 +295,56 @@ class GSheetDbTest {
 
         assertTrue(db.isDirty());
         // treatyId A, title B, [notes C — not ours], year D, ratified E, signedOn F, status G.
-        assertEquals(List.of("'Treaty'!A3:B3", "'Treaty'!D3:G3"), ranges(db));
+        // Two fields were assigned, so two cells are sent — not the eight the type declares.
+        assertEquals(List.of("'Treaty'!B3:B3", "'Treaty'!G3:G3"), ranges(db));
 
-        assertEquals("Revised Accord on Water", cellsAt(db, "'Treaty'!A3:B3").get(1));
-        assertEquals("SIGNED", cellsAt(db, "'Treaty'!D3:G3").get(3));
+        assertEquals("Revised Accord on Water", cellsAt(db, "'Treaty'!B3:B3").get(0));
+        assertEquals("SIGNED", cellsAt(db, "'Treaty'!G3:G3").get(0));
+    }
+
+    @Test
+    @DisplayName("saving a document nobody edited sends nothing at all")
+    void unchangedSaveWritesNothing() throws SQLException {
+        upsert(db, Treaty.DEF).save(query(db, Treaty.DEF).byKey("UAN-1997-03"));
+        assertEquals(List.of(), ranges(db),
+                "read it, save it, change nothing: there is no cell to write, so there is no request");
+    }
+
+    @Test
+    @DisplayName("a cell holding a formula survives a save of its neighbours, and yields to an edit")
+    void doesNotFlattenAFormula() throws SQLException {
+        // At this layer a formula is indistinguishable from a literal: the API is read with
+        // UNFORMATTED_VALUE, so `title` arrives as whatever the formula computed to. Writing that
+        // value back in RAW mode is what would replace the formula with a frozen copy of it.
+        upsert(db, Treaty.DEF).save(query(db, Treaty.DEF).byKey("UAN-1997-03").status("SIGNED"));
+
+        for (String range : ranges(db)) {
+            assertFalse(range.contains("B"), "column B was not assigned, so it must not be "
+                    + "written — on a formula cell that write is destructive: " + range);
+        }
+        assertEquals(List.of("'Treaty'!G2:G2"), ranges(db));
+
+        // And nothing is forbidden: assign it and it is written like any other field.
+        try (var other = GSheetDb.offline("x").register(Treaty.DEF)) {
+            other.loadOffline(Map.of("Treaty", grid()));
+            upsert(other, Treaty.DEF)
+                    .save(query(other, Treaty.DEF).byKey("UAN-1997-03").title("Deliberately renamed"));
+            assertEquals(List.of("'Treaty'!B2:B2"), ranges(other));
+            assertEquals("Deliberately renamed", cellsAt(other, "'Treaty'!B2:B2").get(0));
+        }
+    }
+
+    @Test
+    @DisplayName("a value that only looks different across representations is not a change")
+    void numericRepresentationIsNotAChange() throws SQLException {
+        // The API hands back every number as a Double; the mirror hands back the declared type. 1997d
+        // and Integer 1997 are one value, and treating them as two would write the cell needlessly.
+        Treaty t = query(db, Treaty.DEF).byKey("UAN-1997-03");
+        upsert(db, Treaty.DEF).save(t.year(1997).ratified(true).status("RATIFIED"));
+
+        assertEquals(List.of(), ranges(db),
+                "year re-set to the same number, ratified to the same boolean, status to the same "
+                + "string — nothing moved, so nothing is sent");
     }
 
     @Test
@@ -312,7 +358,7 @@ class GSheetDbTest {
         for (String range : ranges(db)) {
             assertFalse(range.contains("C"), "no range may cover column C: " + range);
         }
-        assertEquals(List.of("'Treaty'!A2:B2", "'Treaty'!D2:G2"), ranges(db));
+        assertEquals(List.of("'Treaty'!B2:B2"), ranges(db));
     }
 
     @Test
@@ -321,8 +367,8 @@ class GSheetDbTest {
         Treaty t = query(db, Treaty.DEF).byKey("UAN-2001-11").signedOnDate(LocalDate.of(2001, 11, 5));
         upsert(db, Treaty.DEF).save(t);
 
-        var cells = cellsAt(db, "'Treaty'!D3:G3");        // year D, ratified E, signedOn F, status G
-        assertEquals(SheetDates.toSerial(LocalDate.of(2001, 11, 5)), (Double) cells.get(2), 0.0001);
+        var cells = cellsAt(db, "'Treaty'!F3:F3");         // signedOn is column F, and the only change
+        assertEquals(SheetDates.toSerial(LocalDate.of(2001, 11, 5)), (Double) cells.get(0), 0.0001);
     }
 
     @Test
@@ -358,8 +404,8 @@ class GSheetDbTest {
         docs.save(query(db, Treaty.DEF).byKey("UAN-1997-03").title("a"));   // row 2
         docs.save(query(db, Treaty.DEF).byKey("UAN-2001-11").title("b"));   // row 3
         docs.save(query(db, Treaty.DEF).byKey("UAN-2010-07").title("c"));   // row 4
-        assertEquals(List.of("'Treaty'!A2:B4", "'Treaty'!D2:G4"), ranges(db),
-                "rows 2..4 are one run, in two rectangles because column C is not ours");
+        assertEquals(List.of("'Treaty'!B2:B4"), ranges(db),
+                "rows 2..4 are one run, and all three changed the same one column");
         assertEquals(3, db.docs(Treaty.DEF).pendingBlocks().get(0).rows().size());
 
         try (var fresh = GSheetDb.offline("x").register(Treaty.DEF)) {
@@ -368,10 +414,21 @@ class GSheetDbTest {
                     .save(query(fresh, Treaty.DEF).byKey("UAN-1997-03").title("a"))   // row 2
                     .save(query(fresh, Treaty.DEF).byKey("UAN-2010-07").title("c"));  // row 4
 
-            assertEquals(List.of("'Treaty'!A2:B2", "'Treaty'!D2:G2",
-                                 "'Treaty'!A4:B4", "'Treaty'!D4:G4"), ranges(fresh),
+            assertEquals(List.of("'Treaty'!B2:B2", "'Treaty'!B4:B4"), ranges(fresh),
                     "rows 2 and 4 are not contiguous");
         }
+    }
+
+    @Test
+    @DisplayName("rows that changed different columns do not share a rectangle")
+    void doesNotCoalesceAcrossDifferentShapes() throws SQLException {
+        upsert(db, Treaty.DEF)
+                .save(query(db, Treaty.DEF).byKey("UAN-1997-03").title("a"))      // row 2, column B
+                .save(query(db, Treaty.DEF).byKey("UAN-2001-11").status("X"));    // row 3, column G
+
+        assertEquals(List.of("'Treaty'!B2:B2", "'Treaty'!G3:G3"), ranges(db),
+                "one rectangle over both rows would write row 3's title and row 2's status, "
+                + "neither of which anybody touched");
     }
 
     @Test
@@ -493,7 +550,7 @@ class GSheetDbTest {
                         "column H holds the formula this library wrote; touching it on every save "
                         + "would be a self-inflicted wound: " + block.range());
             }
-            assertEquals(List.of("'Treaty'!A2:B2", "'Treaty'!D2:G2"), ranges(other));
+            assertEquals(List.of("'Treaty'!B2:B2"), ranges(other));
         }
     }
 
@@ -524,7 +581,7 @@ class GSheetDbTest {
     @DisplayName("a column inserted since load moves the write, it does not corrupt it")
     void reheaderFollowsAMovedColumn() throws SQLException {
         upsert(db, Treaty.DEF).save(query(db, Treaty.DEF).byKey("UAN-2001-11").title("Revised"));
-        assertEquals(List.of("'Treaty'!A3:B3", "'Treaty'!D3:G3"), ranges(db));
+        assertEquals(List.of("'Treaty'!B3:B3"), ranges(db));
 
         // Somebody inserts a column at B while we hold title=B, year=D, ... Everything shifts right.
         var moved = List.<Object>of("treatyId", "inserted", "title", "notes",
@@ -532,8 +589,9 @@ class GSheetDbTest {
         db.docs(Treaty.DEF).reheader(moved);
         db.docs(Treaty.DEF).relocate(keyColumn("UAN-1997-03", "UAN-2001-11", "UAN-2010-07"));
 
-        assertEquals(List.of("'Treaty'!A3:A3", "'Treaty'!C3:C3", "'Treaty'!E3:H3"), ranges(db),
-                "addressed by field name against the header as it is now, so title follows to C");
+        assertEquals(List.of("'Treaty'!C3:C3"), ranges(db),
+                "addressed by field name against the header as it is now, so title follows to C — "
+                + "while the comparison that decided it changed still reads the loaded grid at B");
         assertEquals("Revised", cellsAt(db, "'Treaty'!C3:C3").get(0));
     }
 
@@ -541,16 +599,16 @@ class GSheetDbTest {
     @DisplayName("a row inserted since load moves the document, found again by its key")
     void relocateFollowsAMovedRow() throws SQLException {
         upsert(db, Treaty.DEF).save(query(db, Treaty.DEF).byKey("UAN-2010-07").title("Revised"));
-        assertEquals(List.of("'Treaty'!A4:B4", "'Treaty'!D4:G4"), ranges(db));
+        assertEquals(List.of("'Treaty'!B4:B4"), ranges(db));
 
         // Somebody inserts a row above it. UAN-2010-07 is now on row 5, not row 4.
         db.docs(Treaty.DEF).reheader(grid().get(0));
         db.docs(Treaty.DEF).relocate(
                 keyColumn("UAN-1997-03", "UAN-2001-11", "brand-new", "UAN-2010-07"));
 
-        assertEquals(List.of("'Treaty'!A5:B5", "'Treaty'!D5:G5"), ranges(db),
+        assertEquals(List.of("'Treaty'!B5:B5"), ranges(db),
                 "row 5 now — the write follows the document, not the row number it used to have");
-        assertEquals("Revised", cellsAt(db, "'Treaty'!A5:B5").get(1));
+        assertEquals("Revised", cellsAt(db, "'Treaty'!B5:B5").get(0));
     }
 
     @Test

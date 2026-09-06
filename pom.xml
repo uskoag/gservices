@@ -14,16 +14,19 @@
 
     <modules>
         <module>oauth</module>
+        <module>oauth_vault</module>
         <module>sheets</module>
         <module>drive</module>
         <module>docs</module>
         <module>slides</module>
         <module>youtube</module>
         <module>gmail</module>
+        <module>calendar</module>
         <module>spreadsheet_cli</module>
         <module>gmail_cli</module>
         <module>gslides_cli</module>
         <module>gsheetsdb</module>
+        <module>gcalendar_cli</module>
     </modules>
 
     <!--
@@ -48,12 +51,13 @@
         <google.slides.ver>v1-rev20250401-2.0.0</google.slides.ver>
         <google.youtube.ver>v3-rev20250714-2.0.0</google.youtube.ver>
         <google.gmail.ver>v1-rev20251201-2.0.0</google.gmail.ver>
+        <google.calendar.ver>v3-rev20260517-2.0.0</google.calendar.ver>
 
         <!-- CLI tooling -->
         <gson.ver>2.10.1</gson.ver>
         <h2.ver>2.4.240</h2.ver>
         <jsoup.ver>1.21.1</jsoup.ver>
-        <javax.mail.ver>1.6.2</javax.mail.ver>
+        <jakarta.mail.ver>2.0.1</jakarta.mail.ver>
         <unicode.console.ver>1.0</unicode.console.ver>
     </properties>
 

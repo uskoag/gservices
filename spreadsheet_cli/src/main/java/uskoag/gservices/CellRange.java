@@ -113,4 +113,27 @@ public class CellRange {
         int bang = rangeRef.lastIndexOf('!');
         return bang < 0 ? rangeRef : rangeRef.substring(bang + 1);
     }
+
+    /**
+     * A tab title as it must appear to the left of "!" in an A1 reference. Everywhere else in this
+     * tool a sheet name is the literal title — it is matched against `properties.title` — so it is
+     * this one step, building the reference, that has to add the quoting A1 notation wants.
+     *
+     * <p>Google accepts a bare title only when it reads as an identifier; a space, a hyphen, a plus,
+     * an apostrophe or a leading digit each need the quoted form, and an apostrophe inside the title
+     * is doubled within it. Quoting is always legal, so this quotes unconditionally rather than try
+     * to guess which titles are safe bare — "'Sheet1'!A1" and "Sheet1!A1" mean the same thing.
+     *
+     * <p>A title that arrives already wrapped in quotes is passed through untouched, so a caller
+     * who quotes on the command line (which worked before this method existed) is not quoted twice.
+     */
+    public static String a1Sheet(String title) {
+        if (title.length() >= 2 && title.startsWith("'") && title.endsWith("'")) return title;
+        return "'" + title.replace("'", "''") + "'";
+    }
+
+    /** Full A1 reference for a range on a named tab: ("Q1 2026", "A1:C3") → "'Q1 2026'!A1:C3". */
+    public static String a1Ref(String title, String range) {
+        return a1Sheet(title) + "!" + range;
+    }
 }

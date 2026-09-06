@@ -11,10 +11,10 @@
         <version>1.0</version>
     </parent>
 
-    <artifactId>uskoag-gservices-gmail_cli</artifactId>
+    <artifactId>uskoag-gservices-gcalendar_cli</artifactId>
     <packaging>jar</packaging>
 
-    <description>Command-line Gmail companion: read, search and draft emails (no send), with per-app-key encrypted OAuth tokens</description>
+    <description>Command-line Google Calendar companion: calendars, events, invites and sharing, brokered through uskoag-wallet</description>
 
     <dependencies>
         <!-- The wallet client, and only the client. Contributes a CredentialSource through
@@ -27,14 +27,14 @@
 
         <dependency>
             <groupId>io.github.uskoag</groupId>
-            <artifactId>uskoag-gservices-gmail</artifactId>
+            <artifactId>uskoag-gservices-calendar</artifactId>
             <version>${project.version}</version>
         </dependency>
 
         <dependency>
             <groupId>com.google.apis</groupId>
-            <artifactId>google-api-services-gmail</artifactId>
-            <version>${google.gmail.ver}</version>
+            <artifactId>google-api-services-calendar</artifactId>
+            <version>${google.calendar.ver}</version>
         </dependency>
 
         <dependency>
@@ -50,22 +50,8 @@
             <version>${gson.ver}</version>
         </dependency>
 
-        <!-- MIME message construction for drafts (all-in-one jar bundles JavaBeans Activation) -->
-        <dependency>
-            <groupId>com.sun.mail</groupId>
-            <artifactId>jakarta.mail</artifactId>
-            <version>${jakarta.mail.ver}</version>
-        </dependency>
-
-        <!-- HTML parsing for strip-quotes (remove quoted reply history from HTML bodies) -->
-        <dependency>
-            <groupId>org.jsoup</groupId>
-            <artifactId>jsoup</artifactId>
-            <version>${jsoup.ver}</version>
-        </dependency>
-
-        <!-- UTF-8 console output on Windows (SetConsoleOutputCP 65001 + UTF-8 streams) so unicode mail
-             renders instead of mojibake; uses the FFM API, requires JDK 22+ at runtime -->
+        <!-- UTF-8 console output on Windows (SetConsoleOutputCP 65001 + UTF-8 streams) so unicode event
+             titles/locations render instead of mojibake; uses the FFM API, requires JDK 22+ at runtime -->
         <dependency>
             <groupId>io.github.xyz-jphil</groupId>
             <artifactId>xyz-jphil-windows_console_set_unicode_output</artifactId>
@@ -89,27 +75,23 @@
                         <configuration>
                             <transformers>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                    <mainClass>uskoag.gservices.GmailCli</mainClass>
+                                    <mainClass>uskoag.gservices.CalendarCli</mainClass>
                                     <manifestEntries>
                                         <!-- Grant FFM native access to the classpath (unnamed module) so the
                                              unicode-console lib's kernel32 call runs without a JDK warning -->
                                         <Enable-Native-Access>ALL-UNNAMED</Enable-Native-Access>
                                     </manifestEntries>
                                 </transformer>
-                                <!-- Merge META-INF/services so jakarta.mail providers survive shading -->
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
                             </transformers>
-                            <finalName>uskoag-gmailcli</finalName>
+                            <finalName>uskoag-gcalendarcli</finalName>
                             <filters>
                                 <filter>
-                                    <!-- Exclude signature files to avoid security exceptions -->
                                     <artifact>*:*</artifact>
                                     <excludes>
                                         <exclude>META-INF/*.SF</exclude>
                                         <exclude>META-INF/*.DSA</exclude>
                                         <exclude>META-INF/*.RSA</exclude>
-                                        <!-- Drop the unicode-console lib's module descriptor: it runs from the
-                                             classpath (unnamed module) in the fat jar, so its module-info is dead weight -->
                                         <exclude>module-info.class</exclude>
                                     </excludes>
                                 </filter>

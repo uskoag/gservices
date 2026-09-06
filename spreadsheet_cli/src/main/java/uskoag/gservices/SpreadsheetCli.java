@@ -67,7 +67,7 @@ import java.util.stream.Stream;
  *   freeze  <id> <sheet> [--rows N] [--cols N]
  *   format  <id> <sheet> <range> [--bg #hex] [--text #hex] [--bold] [--italic]
  *                                [--align left|center|right] [--valign top|middle|bottom] [--font-size N] [--wrap]
- *   validate <id> <sheet> <range> (--from-range Ref | --list a,b,c) [--warn] [--clear]
+ *   validate <id> <sheet> <range> (--from-range Ref | --list a,b,c | --per-row-formula Tmpl) [--warn] [--clear]
  *                                 [--colors #h1,#h2,... [--color-legend]]
  *   highlight <id> <sheet> <range> (--from-range Ref | --list a,b,c | --colors-from-range Ref) [--colors #h1,#h2,...] [--clear]
  *   filter  <id> <sheet> [<range>] [--clear]
@@ -339,7 +339,7 @@ public class SpreadsheetCli {
 
         if (ranges.size() == 1 && CellRange.isSingleCell(ranges.get(0)) && renderOption == null) {
             // Single cell fast path — plain value
-            String apiRange = sheetName + "!" + ranges.get(0);
+            String apiRange = CellRange.a1Ref(sheetName, ranges.get(0));
             ValueRange response = sheetsService.spreadsheets().values().get(spreadsheetId, apiRange).execute();
             List<List<Object>> values = response.getValues();
             if (values != null && !values.isEmpty() && !values.get(0).isEmpty()) {
@@ -353,14 +353,14 @@ public class SpreadsheetCli {
 
         if (ranges.size() == 1) {
             // Single range
-            String apiRange = sheetName + "!" + ranges.get(0);
+            String apiRange = CellRange.a1Ref(sheetName, ranges.get(0));
             var get = sheetsService.spreadsheets().values().get(spreadsheetId, apiRange);
             if (renderOption != null) get.setValueRenderOption(renderOption);
             ValueRange response = get.execute();
             outputRangeData(ranges.get(0), response.getValues(), format);
         } else {
             // Multiple ranges — batchGet
-            List<String> apiRanges = ranges.stream().map(r -> sheetName + "!" + r).collect(Collectors.toList());
+            List<String> apiRanges = ranges.stream().map(r -> CellRange.a1Ref(sheetName, r)).collect(Collectors.toList());
             var batchGet = sheetsService.spreadsheets().values().batchGet(spreadsheetId).setRanges(apiRanges);
             if (renderOption != null) batchGet.setValueRenderOption(renderOption);
             BatchGetValuesResponse batchResponse = batchGet.execute();
@@ -394,7 +394,7 @@ public class SpreadsheetCli {
      * the same pair as a compact JSON string per cell (those formats are flat, single-string-per-cell).
      */
     private static void handleReadBoth(String spreadsheetId, String sheetName, List<String> ranges, String format) throws IOException {
-        List<String> apiRanges = ranges.stream().map(r -> sheetName + "!" + r).collect(Collectors.toList());
+        List<String> apiRanges = ranges.stream().map(r -> CellRange.a1Ref(sheetName, r)).collect(Collectors.toList());
 
         BatchGetValuesResponse valuesResp = sheetsService.spreadsheets().values()
             .batchGet(spreadsheetId).setRanges(apiRanges).execute();
@@ -450,7 +450,7 @@ public class SpreadsheetCli {
      * {value, formula, note, color, numberFormat} — the details the plain values API can't return.
      */
     private static void handleReadRich(String spreadsheetId, String sheetName, List<String> ranges, String format) throws IOException {
-        List<String> apiRanges = ranges.stream().map(r -> sheetName + "!" + r).collect(Collectors.toList());
+        List<String> apiRanges = ranges.stream().map(r -> CellRange.a1Ref(sheetName, r)).collect(Collectors.toList());
 
         Spreadsheet ss = sheetsService.spreadsheets().get(spreadsheetId)
             .setRanges(apiRanges)
@@ -625,7 +625,7 @@ public class SpreadsheetCli {
         }
         String sheetName = argList.remove(0);
         String range     = argList.isEmpty() ? null : argList.remove(0);
-        String apiRange  = (range == null) ? sheetName : sheetName + "!" + range;
+        String apiRange  = (range == null) ? CellRange.a1Sheet(sheetName) : CellRange.a1Ref(sheetName, range);
 
         logInfo("Inspecting " + apiRange + " notes=" + wantNotes + " colors=" + wantColors);
 
@@ -783,7 +783,7 @@ public class SpreadsheetCli {
         String sheetName = argList.remove(0);
         String sql       = argList.remove(0);
 
-        String apiRange = (range == null) ? sheetName : sheetName + "!" + range;
+        String apiRange = (range == null) ? CellRange.a1Sheet(sheetName) : CellRange.a1Ref(sheetName, range);
         int firstRow    = (range == null) ? 1 : startRowOf(range);
 
         logInfo("Querying " + apiRange + " firstRow=" + firstRow + " format=" + format);
@@ -825,7 +825,7 @@ public class SpreadsheetCli {
         String sheetName = argList.remove(0);
         String sql       = argList.remove(0);
 
-        String apiRange = (range == null) ? sheetName : sheetName + "!" + range;
+        String apiRange = (range == null) ? CellRange.a1Sheet(sheetName) : CellRange.a1Ref(sheetName, range);
         int firstRow    = (range == null) ? 1 : startRowOf(range);
 
         logInfo("Update " + apiRange + " firstRow=" + firstRow + " dryRun=" + dryRun + " asDate=" + asDate);
@@ -861,7 +861,7 @@ public class SpreadsheetCli {
                     }
                 }
                 data.add(new ValueRange()
-                    .setRange(sheetName + "!" + c.cell())
+                    .setRange(CellRange.a1Ref(sheetName, c.cell()))
                     .setValues(List.of(List.of(newVal))));
             }
             sheetsService.spreadsheets().values()
@@ -915,7 +915,7 @@ public class SpreadsheetCli {
 
         logInfo("Writing to: " + sheetName + "!" + address);
 
-        String apiRange = sheetName + "!" + address;
+        String apiRange = CellRange.a1Ref(sheetName, address);
         ValueRange body;
         boolean isBulk;
 
@@ -1034,7 +1034,7 @@ public class SpreadsheetCli {
         }
         String sheetName  = argList.remove(0);
         String startRange = argList.isEmpty() ? "A1" : argList.remove(0);
-        String apiRange   = sheetName + "!" + startRange;
+        String apiRange   = CellRange.a1Ref(sheetName, startRange);
 
         List<List<Object>> values = loadWriteData(tsvFile, csvFile, jsonFile, tsvInline, jsonInline);
         if (values == null || values.isEmpty()) {
@@ -1103,7 +1103,7 @@ public class SpreadsheetCli {
         logInfo("Clearing: " + sheetName + "!" + address);
 
         sheetsService.spreadsheets().values()
-            .clear(spreadsheetId, sheetName + "!" + address, new ClearValuesRequest())
+            .clear(spreadsheetId, CellRange.a1Ref(sheetName, address), new ClearValuesRequest())
             .execute();
 
         if (!quiet) {
@@ -1397,17 +1397,18 @@ public class SpreadsheetCli {
         boolean clear = removeFlag(argList, "--clear");
         String fromRange = extractFlagValue(argList, "--from-range");
         String list = extractFlagValue(argList, "--list");
+        String perRowFormula = extractFlagValue(argList, "--per-row-formula");
         boolean warn = removeFlag(argList, "--warn");
         removeFlag(argList, "--strict"); // strict is the default; explicit flag is a no-op
         String colorsArg = extractFlagValue(argList, "--colors");
         boolean colorLegend = removeFlag(argList, "--color-legend");
 
-        if (!clear && fromRange == null && list == null) {
-            logError("validate: requires --from-range <RangeRef> or --list a,b,c (or --clear)");
+        if (!clear && fromRange == null && list == null && perRowFormula == null) {
+            logError("validate: requires --from-range <RangeRef>, --list a,b,c, or --per-row-formula <template> (or --clear)");
             System.exit(1);
         }
-        if (fromRange != null && list != null) {
-            logError("validate: --from-range and --list are mutually exclusive");
+        if ((fromRange != null ? 1 : 0) + (list != null ? 1 : 0) + (perRowFormula != null ? 1 : 0) > 1) {
+            logError("validate: --from-range, --list and --per-row-formula are mutually exclusive");
             System.exit(1);
         }
         if (clear && (colorsArg != null || colorLegend)) {
@@ -1416,6 +1417,10 @@ public class SpreadsheetCli {
         }
         if (colorLegend && fromRange == null) {
             logError("validate: --color-legend requires --from-range (there's no legend location for --list)");
+            System.exit(1);
+        }
+        if (perRowFormula != null && (colorsArg != null || colorLegend)) {
+            logError("validate: --colors/--color-legend aren't supported with --per-row-formula");
             System.exit(1);
         }
 
@@ -1433,47 +1438,59 @@ public class SpreadsheetCli {
             return;
         }
         int sheetId = sheet.getProperties().getSheetId();
-        var gridRange = CellRange.toGridRange(sheetId, range);
 
         var requests = new ArrayList<Request>();
-        requests.add(clear
-            ? CellValidation.buildClearRequest(gridRange)
-            : CellValidation.buildSetRequest(gridRange, fromRange, list, !warn));
-
-        boolean wantColor = !clear && (colorsArg != null || colorLegend);
-        if (wantColor) {
-            List<String> values = resolveValues(spreadsheetId, fromRange, list);
-            if (values.isEmpty()) {
-                logError("validate: --colors/--color-legend has no values to color");
+        if (perRowFormula != null) {
+            int[] b;
+            try {
+                b = CellRange.bounds(range);
+            } catch (NumberFormatException e) {
+                logError("validate: --per-row-formula needs an explicit start AND end row in <range>, e.g. I2:I501 (open-ended ranges like I2:I can't be expanded per-row)");
                 System.exit(1);
+                return;
             }
-            List<String> colors = resolveColors(colorsArg);
+            requests.addAll(CellValidation.buildPerRowRequests(sheetId, b[0], b[2], b[1], b[3], perRowFormula, !warn));
+        } else {
+            var gridRange = CellRange.toGridRange(sheetId, range);
+            requests.add(clear
+                ? CellValidation.buildClearRequest(gridRange)
+                : CellValidation.buildSetRequest(gridRange, fromRange, list, !warn));
 
-            Sheet legendSheet = null;
-            GridRange legendGridRange = null;
-            if (colorLegend) {
-                String legendSheetName = CellRange.sheetNameOf(fromRange, sheetName);
-                legendSheet = spreadsheet.getSheets().stream()
-                    .filter(s -> legendSheetName.equals(s.getProperties().getTitle()))
-                    .findFirst().orElse(null);
-                if (legendSheet == null) {
-                    logError("validate: legend sheet '" + legendSheetName + "' not found");
+            boolean wantColor = !clear && (colorsArg != null || colorLegend);
+            if (wantColor) {
+                List<String> values = resolveValues(spreadsheetId, fromRange, list);
+                if (values.isEmpty()) {
+                    logError("validate: --colors/--color-legend has no values to color");
                     System.exit(1);
-                    return;
                 }
-                legendGridRange = CellRange.toGridRange(legendSheet.getProperties().getSheetId(), CellRange.rangeOnlyOf(fromRange));
-            }
+                List<String> colors = resolveColors(colorsArg);
 
-            if (legendSheet != null && legendSheet.getProperties().getSheetId() == sheetId) {
-                // Data range and legend share a sheet → one combined refresh so their delete indices
-                // don't corrupt each other mid-batch.
-                requests.addAll(CellHighlight.buildRefreshRequestsMulti(sheet.getConditionalFormats(), sheetId,
-                    List.of(gridRange, legendGridRange), List.of(values, values), List.of(colors, colors)));
-            } else {
-                requests.addAll(CellHighlight.buildRefreshRequests(sheet.getConditionalFormats(), sheetId, gridRange, values, colors));
-                if (legendSheet != null) {
-                    requests.addAll(CellHighlight.buildRefreshRequests(legendSheet.getConditionalFormats(),
-                        legendSheet.getProperties().getSheetId(), legendGridRange, values, colors));
+                Sheet legendSheet = null;
+                GridRange legendGridRange = null;
+                if (colorLegend) {
+                    String legendSheetName = CellRange.sheetNameOf(fromRange, sheetName);
+                    legendSheet = spreadsheet.getSheets().stream()
+                        .filter(s -> legendSheetName.equals(s.getProperties().getTitle()))
+                        .findFirst().orElse(null);
+                    if (legendSheet == null) {
+                        logError("validate: legend sheet '" + legendSheetName + "' not found");
+                        System.exit(1);
+                        return;
+                    }
+                    legendGridRange = CellRange.toGridRange(legendSheet.getProperties().getSheetId(), CellRange.rangeOnlyOf(fromRange));
+                }
+
+                if (legendSheet != null && legendSheet.getProperties().getSheetId() == sheetId) {
+                    // Data range and legend share a sheet → one combined refresh so their delete indices
+                    // don't corrupt each other mid-batch.
+                    requests.addAll(CellHighlight.buildRefreshRequestsMulti(sheet.getConditionalFormats(), sheetId,
+                        List.of(gridRange, legendGridRange), List.of(values, values), List.of(colors, colors)));
+                } else {
+                    requests.addAll(CellHighlight.buildRefreshRequests(sheet.getConditionalFormats(), sheetId, gridRange, values, colors));
+                    if (legendSheet != null) {
+                        requests.addAll(CellHighlight.buildRefreshRequests(legendSheet.getConditionalFormats(),
+                            legendSheet.getProperties().getSheetId(), legendGridRange, values, colors));
+                    }
                 }
             }
         }
@@ -1482,8 +1499,10 @@ public class SpreadsheetCli {
             new BatchUpdateSpreadsheetRequest().setRequests(requests)).execute();
 
         if (!quiet) {
-            var msg = new StringBuilder("SUCCESS: " + (clear ? "cleared validation on " : "validated ") + sheetName + "!" + range);
-            if (wantColor) msg.append(colorLegend ? " + colored data range + legend" : " + colored data range");
+            var msg = new StringBuilder("SUCCESS: " + (clear ? "cleared validation on " : perRowFormula != null ? "validated (per-row) " : "validated ") + sheetName + "!" + range);
+            if (!clear && perRowFormula == null && (colorsArg != null || colorLegend)) {
+                msg.append(colorLegend ? " + colored data range + legend" : " + colored data range");
+            }
             System.out.println(msg.toString());
         }
     }
@@ -1737,7 +1756,7 @@ public class SpreadsheetCli {
         // Phase A: header row (+ notes) for every target sheet, one combined call — auto-detects
         // each sheet's dataColumnEnd from its last non-empty header cell (unless --col-end given).
         List<String> apiRangesA = targetSheets.stream()
-            .map(s -> s.getProperties().getTitle() + "!" + headerRowNum + ":" + headerRowNum)
+            .map(s -> CellRange.a1Ref(s.getProperties().getTitle(), headerRowNum + ":" + headerRowNum))
             .toList();
         Spreadsheet ssA = sheetsService.spreadsheets().get(spreadsheetId)
             .setRanges(apiRangesA)
@@ -1763,8 +1782,8 @@ public class SpreadsheetCli {
         List<String> apiRangesB = targetSheets.stream().map(s -> {
             String name = s.getProperties().getTitle();
             int ce = colEndBySheet.get(name);
-            return name + "!" + CellRange.colToLetter(colStart) + dataStartRow + ":"
-                + CellRange.colToLetter(ce) + (dataStartRow + sampleRowsAnalyzed - 1);
+            return CellRange.a1Ref(name, CellRange.colToLetter(colStart) + dataStartRow + ":"
+                + CellRange.colToLetter(ce) + (dataStartRow + sampleRowsAnalyzed - 1));
         }).toList();
         Spreadsheet ssB = sheetsService.spreadsheets().get(spreadsheetId)
             .setRanges(apiRangesB)
@@ -2157,6 +2176,18 @@ public class SpreadsheetCli {
         out.println("  range are replaced, not stacked) while the dropdown itself needs no update at all when");
         out.println("  using --from-range (it re-reads the legend live, every time).");
         out.println();
+        out.println("  --per-row-formula '<template with {ROW}>'   Cascading/dependent dropdown: <range> MUST");
+        out.println("                         give an explicit start AND end row (e.g. I2:I501, not I2:I) --");
+        out.println("                         one ONE_OF_RANGE rule is generated PER ROW, with {ROW} replaced");
+        out.println("                         by that row's own number, e.g.:");
+        out.println("                           --per-row-formula 'INDIRECT(\"Lists!\"&VLOOKUP($H{ROW},Lists!$K$2:$L$7,2,FALSE)&\"2:\"&VLOOKUP($H{ROW},Lists!$K$2:$L$7,2,FALSE))'");
+        out.println("                         Needed because a single data-validation rule applied over a multi-row");
+        out.println("                         range does NOT auto-shift its formula's relative refs per row the way");
+        out.println("                         conditional formatting does -- every row would otherwise consult the");
+        out.println("                         same anchor cell. Mutually exclusive with --from-range/--list/--colors*.");
+        out.println("                         Re-running replaces those rows' rules (SetDataValidation always replaces,");
+        out.println("                         never stacks); growing past the row count needs a re-run with a wider range.");
+        out.println();
         out.println("HIGHLIGHT  (conditional format -- color-code each allowed value at a glance)");
         out.println("  Adds one conditional-format rule per distinct value (exact text match, background");
         out.println("  color only) -- pairs naturally with 'validate' on the same range/values, but works");
@@ -2238,6 +2269,7 @@ public class SpreadsheetCli {
         out.println("  uskoag-gsheetscli validate ID Sheet1 C2:C --from-range \"'Allowed Values'!A2:A\"    # dropdown from another sheet");
         out.println("  uskoag-gsheetscli validate ID Sheet1 D2:D --list contacted,replied,bounced --warn");
         out.println("  uskoag-gsheetscli validate ID Sheet1 C2:C --clear");
+        out.println("  uskoag-gsheetscli validate ID Sheet1 I2:I501 --per-row-formula 'INDIRECT(\"Lists!\"&VLOOKUP($H{ROW},Lists!$K$2:$L$7,2,FALSE)&\"2:\"&VLOOKUP($H{ROW},Lists!$K$2:$L$7,2,FALSE))'  # cascading dropdown, keyed on each row's own H cell");
         out.println("  uskoag-gsheetscli validate ID Sheet1 C2:C --from-range \"'Allowed Values'!A2:A\" \\");
         out.println("      --colors \"#d9ead3,#fff2cc,#f4cccc\" --color-legend   # dropdown + data colored + legend colored, one call");
         out.println("  uskoag-gsheetscli highlight ID Sheet1 C2:C --from-range \"'Allowed Values'!A2:A\"   # auto palette");

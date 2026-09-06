@@ -9,6 +9,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.SortedSet;
 import java.util.TreeSet;
 import xyz.jphil.datahelper.DataHelper_I;
 
@@ -36,6 +37,16 @@ final class SheetDocs<E extends DataHelper_I<E>> {
 
     /** Declared field -&gt; 1-based sheet column, for those the header actually has. */
     private final Map<String, Integer> columnOf = new LinkedHashMap<>();
+
+    /**
+     * The same mapping as it stood at {@link #load}, which is the one {@link #grid} is indexed by.
+     *
+     * <p>Kept separately because {@link #readdress} rebinds {@link #columnOf} against the header as
+     * it is immediately before a write. After somebody inserts a column, the two disagree — and
+     * reading a loaded value at the <em>new</em> position would compare a field against whatever
+     * used to sit beside it.
+     */
+    private final Map<String, Integer> loadedColumnOf = new LinkedHashMap<>();
 
     private List<String> missingFields = List.of();
 
@@ -144,6 +155,7 @@ final class SheetDocs<E extends DataHelper_I<E>> {
         this.appendedRows.clear();
         this.rowRemap.clear();
         this.columnOf.clear();
+        this.loadedColumnOf.clear();
 
         int header = def.headerRow();
         this.firstDataRow = header + 1;
@@ -156,6 +168,7 @@ final class SheetDocs<E extends DataHelper_I<E>> {
             else columnOf.put(field, at + 1);
         }
         this.missingFields = List.copyOf(missing);
+        this.loadedColumnOf.putAll(columnOf);
 
         int declared = 0;
         for (Integer i : columnOf.values()) declared = Math.max(declared, i);
@@ -484,12 +497,28 @@ final class SheetDocs<E extends DataHelper_I<E>> {
      *
      * <p>Rows still coalesce, so saving a thousand consecutive documents is a handful of ranges
      * rather than a thousand.
+     *
+     * <h3>And only cells that actually changed</h3>
+     *
+     * <p>Declaring a field is not the same thing as having edited it. A caller reads a document,
+     * sets three fields and saves, and the other twenty are simply the values it was handed — so
+     * writing them achieves nothing and risks everything. Each field is therefore compared against
+     * what {@link #load} read for it, through the very conversion the write would use, and only the
+     * differences go in the payload.
+     *
+     * <p>What that protects, concretely: <b>a cell holding a formula</b>. The API is read with
+     * {@code UNFORMATTED_VALUE}, so a {@code VLOOKUP} arrives as its computed value and would be
+     * written back as that value in {@code RAW} mode — silently replacing a live formula with a
+     * frozen copy of one afternoon's answer. Unchanged means unwritten, so the formula survives.
+     * Assign the field and it is written like any other, because that is an instruction rather than
+     * an accident; there is nothing here to configure and no field anyone is forbidden to edit.
+     *
+     * <p>A row whose every declared field still matches the sheet contributes no rectangle at all.
      */
     List<WriteBlock> pendingBlocks() throws SQLException {
         if (dirtyRows.isEmpty()) return List.of();
         requireWritable();
 
-        var segments = declaredSegments();
         var blocks = new ArrayList<WriteBlock>();
 
         // Ordered by where each document is going, which is not necessarily where it came from:
@@ -498,34 +527,119 @@ final class SheetDocs<E extends DataHelper_I<E>> {
         for (int row : dirtyRows) targets.add(new int[]{rowRemap.getOrDefault(row, row), row});
         targets.sort((a, b) -> Integer.compare(a[0], b[0]));
 
+        var cellsByRow = new LinkedHashMap<Integer, Map<String, Object>>();
+        var segmentsByRow = new LinkedHashMap<Integer, List<int[]>>();
+        for (int[] target : targets) {
+            var cells = cellsOf(target[1]);
+            cellsByRow.put(target[1], cells);
+            segmentsByRow.put(target[1], changedSegments(target[1], cells));
+        }
+
         int runStart = -1;
         int previous = -1;
         var run = new ArrayList<Integer>();
+        List<int[]> runSegments = null;
 
         for (int[] target : targets) {
+            var segments = segmentsByRow.get(target[1]);
+            if (segments.isEmpty()) continue;              // nothing on this row actually changed
+
+            // A run needs one shape as well as consecutive rows: two rows that changed different
+            // columns cannot share a rectangle without writing cells the other one did not touch.
+            if (runStart >= 0 && (target[0] != previous + 1 || !sameShape(runSegments, segments))) {
+                emit(blocks, runSegments, runStart, run, cellsByRow);
+                run = new ArrayList<>();
+                runStart = -1;
+            }
             if (runStart < 0) {
                 runStart = target[0];
-            } else if (target[0] != previous + 1) {
-                emit(blocks, segments, runStart, run);
-                run = new ArrayList<>();
-                runStart = target[0];
+                runSegments = segments;
             }
             run.add(target[1]);
             previous = target[0];
         }
-        if (runStart >= 0) emit(blocks, segments, runStart, run);
+        if (runStart >= 0) emit(blocks, runSegments, runStart, run, cellsByRow);
         return blocks;
     }
 
+    /** Runs of consecutive sheet columns whose value on this row differs from the one loaded. */
+    private List<int[]> changedSegments(int mirrorRow, Map<String, Object> cells) {
+        boolean isNew = appendedRows.contains(mirrorRow);
+        var changed = new TreeSet<Integer>();
+        for (String field : def.fields()) {
+            Integer column = columnOf.get(field);
+            if (column == null) continue;                  // no header for it; nowhere to write
+            if (isNew || !sameCell(loadedValue(mirrorRow, field), cells.get(field))) {
+                changed.add(column);
+            }
+        }
+        return runsOf(changed);
+    }
+
+    /** What {@link #load} read for one field of one row, at the position it read it from. */
+    private Object loadedValue(int row, String field) {
+        Integer column = loadedColumnOf.get(field);
+        if (column == null || row < 1 || row > grid.size()) return null;
+        List<Object> cells = grid.get(row - 1);
+        return column <= cells.size() ? cells.get(column - 1) : null;
+    }
+
+    /**
+     * Whether a loaded cell and the cell a write would put there are the same value.
+     *
+     * <p>Compared across representations rather than by {@code equals}, because the two sides come
+     * from different places: the API hands back {@link Double} for every number and the mirror hands
+     * back the declared field type, so {@code 42.0} and {@code Integer 42} are one value and a
+     * {@code String} field over a numeric cell is still that number. Getting this wrong in the
+     * direction of "changed" writes a cell needlessly — which, on a cell holding a formula, is
+     * exactly the damage the comparison exists to prevent.
+     */
+    private static boolean sameCell(Object loaded, Object toWrite) {
+        Object was = loaded == null ? "" : loaded;
+        Object now = toWrite == null ? "" : toWrite;
+        if (was instanceof Number a && now instanceof Number b) {
+            return a.doubleValue() == b.doubleValue();
+        }
+        if (was instanceof Number a) return numberEquals(a, String.valueOf(now));
+        if (now instanceof Number b) return numberEquals(b, String.valueOf(was));
+        if (was instanceof Boolean || now instanceof Boolean) {
+            return String.valueOf(was).equalsIgnoreCase(String.valueOf(now));
+        }
+        return String.valueOf(was).equals(String.valueOf(now));
+    }
+
+    private static boolean numberEquals(Number number, String text) {
+        try {
+            return number.doubleValue() == Double.parseDouble(text.trim());
+        } catch (NumberFormatException e) {
+            return false;
+        }
+    }
+
+    private static boolean sameShape(List<int[]> a, List<int[]> b) {
+        if (a == null || a.size() != b.size()) return false;
+        for (int i = 0; i < a.size(); i++) {
+            if (a.get(i)[0] != b.get(i)[0] || a.get(i)[1] != b.get(i)[1]) return false;
+        }
+        return true;
+    }
+
     private void emit(List<WriteBlock> blocks, List<int[]> segments, int firstRow,
-            List<Integer> mirrorRows) throws SQLException {
+            List<Integer> mirrorRows, Map<Integer, Map<String, Object>> cellsByRow) {
+        var fieldAtColumn = new LinkedHashMap<Integer, String>();
+        columnOf.forEach((field, column) -> fieldAtColumn.put(column, field));
+
         for (int[] segment : segments) {
             var values = new ArrayList<List<Object>>(mirrorRows.size());
             for (int row : mirrorRows) {
-                var cells = cellsOf(row);
+                var cells = cellsByRow.get(row);
                 var slice = new ArrayList<Object>(segment[1] - segment[0] + 1);
                 for (int c = segment[0]; c <= segment[1]; c++) {
-                    slice.add(cells.getOrDefault(c, ""));
+                    // A column inside a run that this row did not change cannot be omitted from the
+                    // rectangle, so it is sent as the value it already holds.
+                    String field = fieldAtColumn.get(c);
+                    Object value = field == null ? null : cells.get(field);
+                    slice.add(value == null ? "" : value);
                 }
                 values.add(slice);
             }
@@ -536,9 +650,8 @@ final class SheetDocs<E extends DataHelper_I<E>> {
         }
     }
 
-    /** Runs of consecutive sheet columns that declared fields occupy, ascending. */
-    private List<int[]> declaredSegments() {
-        var columns = new ArrayList<>(new TreeSet<>(columnOf.values()));
+    /** The given sheet columns as runs of consecutive ones, ascending. */
+    private static List<int[]> runsOf(SortedSet<Integer> columns) {
         var segments = new ArrayList<int[]>();
         int start = -1;
         int previous = -1;
@@ -555,9 +668,9 @@ final class SheetDocs<E extends DataHelper_I<E>> {
         return segments;
     }
 
-    /** Sheet column -&gt; the cell to write, for one document. Declared fields only. */
-    private Map<Integer, Object> cellsOf(int row) throws SQLException {
-        var cells = new LinkedHashMap<Integer, Object>();
+    /** Declared field -&gt; the cell to write, for one document. */
+    private Map<String, Object> cellsOf(int row) throws SQLException {
+        var cells = new LinkedHashMap<String, Object>();
         var sql = "SELECT * FROM " + Sql.quote(def.name())
                 + " WHERE " + Sql.quote(ROW) + " = ?";
         try (var ps = conn.prepareStatement(sql)) {
@@ -566,7 +679,7 @@ final class SheetDocs<E extends DataHelper_I<E>> {
                 if (rs.next()) {
                     for (String field : def.fields()) {
                         Object value = SheetValues.fromSql(rs.getObject(field), def.fieldType(field));
-                        cells.put(columnOf.get(field), SheetValues.toCell(value));
+                        cells.put(field, SheetValues.toCell(value));
                     }
                 }
             }
