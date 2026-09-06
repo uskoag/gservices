@@ -26,11 +26,8 @@ import com.google.gson.stream.JsonWriter;
 import xyz.jphil.windows_console_set_unicode_output.WindowsConsoleSetUnicodeOutput;
 import xyz.jphil.windows_console_set_unicode_output.WindowsConsoleSetUnicodeOutput.EnableResult;
 
-import javax.mail.Session;
-import javax.mail.internet.InternetAddress;
-import javax.mail.internet.MimeBodyPart;
-import javax.mail.internet.MimeMessage;
-import javax.mail.internet.MimeMultipart;
+import jakarta.mail.Session;
+import jakarta.mail.internet.*;
 import java.io.ByteArrayOutputStream;
 import java.io.Console;
 import java.io.FileDescriptor;
@@ -95,7 +92,7 @@ import java.util.Properties;
  *   draft                                 Create a draft (never sends)
  *        --to &lt;a,b&gt; [--cc ..] [--bcc ..] [-s &lt;subject&gt;]
  *        (-b "&lt;body&gt;" | --body-file &lt;path&gt; | --body-stdin) [--html]
- *        [--attach &lt;file&gt; ...] [--reply-to &lt;messageId&gt;] [--thread &lt;threadId&gt;]
+ *        [--attach &lt;file&gt; ...] [--inline &lt;img&gt; ...] [--reply-to &lt;messageId&gt;] [--thread &lt;threadId&gt;]
  *   attachment &lt;messageId&gt; &lt;attachmentId&gt;  Download an attachment   [--out &lt;path&gt;]
  * </pre>
  */
@@ -169,6 +166,7 @@ public class GmailCli {
 
     /** Value-flags that may repeat and accumulate (e.g. --attach a --attach b). */
     private static final String REPEATABLE_ATTACH = "--attach";
+    private static final String REPEATABLE_INLINE = "--inline";
 
     public static void main(String[] args) {
         enableUnicodeOutput();
@@ -262,6 +260,11 @@ public class GmailCli {
                     cmdDraftRead(a, pos.get(1));
                 }
                 case "draft" -> { connect(a); cmdDraft(a); }
+                case "draft-delete" -> {
+                    requirePositional(pos, 1, "draft-delete requires one or more <draftId>");
+                    connect(a);
+                    cmdDraftDelete(pos.subList(1, pos.size()));
+                }
                 case "attachment" -> {
                     requirePositional(pos, 2, "attachment requires <messageId> <attachmentId>");
                     connect(a);
@@ -336,7 +339,14 @@ public class GmailCli {
         }
         Path emailDir = CREDS_BASE.resolve(email);
         Path credsFile = emailDir.resolve("credentials.json");
-        if (!Files.exists(credsFile)) {
+        // On a machine set up around the wallet there is no credentials.json anywhere, and there is not
+        // meant to be — the wallet holds the client and the token, which is the whole point of it. This
+        // check ran before the credential seam was ever consulted, so it refused every such machine
+        // outright and named a remedy the wallet exists to abolish: put a client secret on disk. The
+        // sibling CLIs never had it; it is a leftover from before the migration. Ask for the legacy file
+        // only when nothing better is installed.
+        var brokered = Credentials.discovered().isPresent();
+        if (!brokered && !Files.exists(credsFile)) {
             Files.createDirectories(emailDir);
             logError("OAuth client credentials not found for " + email + ".");
             logError("Place your Google Cloud OAuth client (Desktop app type) JSON at:");
@@ -345,9 +355,10 @@ public class GmailCli {
             System.exit(3);
         }
 
-        requireDesktopClient(credsFile, email);
+        // Guards the loopback consent flow, which a brokered call never runs.
+        if (!brokered) requireDesktopClient(credsFile, email);
 
-        logInfo("Connecting as " + email + " (creds dir: " + emailDir + ")");
+        logInfo("Connecting as " + email + (brokered ? "" : " (creds dir: " + emailDir + ")"));
         var spec = AccessSpec.of("gmail", PROFILE, APP_NAME, email,
                         java.util.List.of(GmailScopes.GMAIL_MODIFY, GmailScopes.GMAIL_COMPOSE))
                 .legacyRoot(CREDS_BASE.toString());
@@ -433,72 +444,112 @@ public class GmailCli {
     }
 
     /**
-     * Lists the per-email accounts configured under {@link #CREDS_BASE}: their OAuth client type and
-     * how many token-stores exist. {@code --probe} calls {@code getProfile} for each to verify it live,
-     * without ever opening a browser.
+     * Every account this machine can send a Gmail call as, and what holds each one's credential.
      *
-     * <p>The {@code tokenStores} count is now a legacy reading and is labelled as one. Those
-     * directories are the old per-app-key stores; the credential that actually answers a call lives in
-     * the wallet, so a count of zero here says nothing about whether the account works. Which is
-     * exactly why {@code --probe} exists and why it is worth more than it used to be.
+     * <p>It used to list one thing: the directories under {@link #CREDS_BASE}. On a machine set up
+     * around the wallet there are none, so the verb whose whole job is to inventory the accounts
+     * answered "(no accounts found)" while the wallet sat there holding a working one. Worse where a
+     * directory did exist — a failed run leaves an empty one behind — because it then reported
+     * "credentials: no, token-stores: 0", every word of it true of the legacy store and every word of
+     * it read as a broken account.
+     *
+     * <p>An empty inventory of a credential store reads as loss, so it has to distinguish "none" from
+     * "cannot say". This asks the credential seam first and the disk second, names the route at the
+     * top, and marks each account with what actually holds it. {@code --probe} calls
+     * {@code getProfile} for each through that same route, without ever opening a browser.
      */
     private static void cmdListProfiles(Args a) throws Exception {
         boolean probe = a.has("probe");
-
-        List<Path> dirs = List.of();
-        if (Files.isDirectory(CREDS_BASE)) {
-            try (var s = Files.list(CREDS_BASE)) {
-                dirs = s.filter(Files::isDirectory).sorted().toList();
-            }
-        }
+        var source = Credentials.discovered();
+        var brokered = source.isPresent();
+        var held = brokered ? source.get().accounts() : List.<String>of();
 
         List<Map<String, Object>> out = new ArrayList<>();
-        for (Path dir : dirs) {
-            String email = dir.getFileName().toString();
-            Path credsFile = dir.resolve("credentials.json");
-            boolean hasCreds = Files.exists(credsFile);
-            String type = hasCreds ? clientType(credsFile) : null;
-
-            int tokenStores = 0;
-            try (var s = Files.list(dir)) {
-                tokenStores = (int) s.filter(Files::isDirectory)
-                        .filter(p -> p.getFileName().toString().startsWith("tokens_"))
-                        .count();
-            } catch (IOException ignore) { }
-
-            Map<String, Object> m = new LinkedHashMap<>();
-            m.put("email", email);
-            m.put("hasCredentials", hasCreds);
-            m.put("clientType", hasCreds ? (type == null ? "unreadable" : type) : "none");
-            m.put("tokenStores", tokenStores);
-            if (probe) probeAccount(m, email, hasCreds, type);
-            out.add(m);
+        for (String email : held) out.add(walletRow(email, probe));
+        for (Path dir : legacyDirs()) {
+            var name = dir.getFileName().toString();
+            if (held.stream().anyMatch(e -> e.equalsIgnoreCase(name))) continue;
+            out.add(legacyRow(dir, probe, brokered));
         }
 
         if (json) { emitJson(out); return; }
 
+        System.out.println("credential route: " + Credentials.describeRoute()
+                + (brokered && !Credentials.ready() ? "   (installed, not ready - unlock it)" : ""));
         if (out.isEmpty()) {
-            System.out.println("(no accounts found under " + CREDS_BASE + ")");
+            System.out.println(brokered
+                    ? (Credentials.ready()
+                        ? "(the wallet holds no accounts - add one: uskoag-walletcli login <email>)"
+                        : "(cannot list accounts while the wallet is locked - unlock it and run this again)")
+                    : "(no accounts found under " + CREDS_BASE + ")");
             return;
         }
         int i = 1;
-        for (Map<String, Object> m : out) {
+        for (Map<String, Object> m : out) printProfile(i++, m, probe);
+        logInfo(out.size() + " account(s)");
+    }
+
+    private static List<Path> legacyDirs() throws IOException {
+        if (!Files.isDirectory(CREDS_BASE)) return List.of();
+        try (var s = Files.list(CREDS_BASE)) {
+            return s.filter(Files::isDirectory).sorted().toList();
+        }
+    }
+
+    /** No on-disk fields at all: there is no client file and no token store, and there is not meant to be. */
+    private static Map<String, Object> walletRow(String email, boolean probe) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("email", email);
+        m.put("heldBy", Credentials.describeRoute());
+        if (probe) probeAccount(m, email, false, null);
+        return m;
+    }
+
+    private static Map<String, Object> legacyRow(Path dir, boolean probe, boolean brokered) {
+        String email = dir.getFileName().toString();
+        Path credsFile = dir.resolve("credentials.json");
+        boolean hasCreds = Files.exists(credsFile);
+        String type = hasCreds ? clientType(credsFile) : null;
+
+        int tokenStores = 0;
+        try (var s = Files.list(dir)) {
+            tokenStores = (int) s.filter(Files::isDirectory)
+                    .filter(p -> p.getFileName().toString().startsWith("tokens_"))
+                    .count();
+        } catch (IOException ignore) { }
+
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("email", email);
+        // A directory the wallet does not know about. Where a wallet is installed that is either left
+        // over from before the migration or an empty shell some earlier run created, and either way it
+        // is not what answers a call — so say so here rather than let the reader assume it is the account.
+        m.put("heldBy", brokered ? "on disk, and not in the wallet" : "on disk");
+        m.put("hasCredentials", hasCreds);
+        m.put("clientType", hasCreds ? (type == null ? "unreadable" : type) : "none");
+        m.put("tokenStores", tokenStores);
+        if (probe) probeAccount(m, email, hasCreds, type);
+        return m;
+    }
+
+    private static void printProfile(int n, Map<String, Object> m, boolean probe) {
+        System.out.println("[" + n + "] " + m.get("email"));
+        System.out.println("    held by     : " + m.get("heldBy"));
+        if (m.containsKey("hasCredentials")) {
             String ct = String.valueOf(m.get("clientType"));
-            System.out.println("[" + (i++) + "] " + m.get("email"));
             System.out.println("    credentials : " + (Boolean.TRUE.equals(m.get("hasCredentials"))
                     ? "yes (" + ct + ("web".equals(ct) ? " - WRONG type; needs Desktop app" : "") + ")"
                     : "no"));
-            System.out.println("    token-stores: " + m.get("tokenStores") + " (legacy on-disk stores)"
-                    + (probe ? "" : "   (login state unverified - re-run with --probe)"));
-            if (probe) {
-                String line = String.valueOf(m.getOrDefault("status", "?"));
-                if (m.containsKey("messagesTotal"))
-                    line += "  (" + m.get("messagesTotal") + " msgs, " + m.get("threadsTotal") + " threads)";
-                if (m.containsKey("error")) line += "  - " + m.get("error");
-                System.out.println("    live status : " + line);
-            }
+            System.out.println("    token-stores: " + m.get("tokenStores") + " (legacy on-disk stores)");
         }
-        logInfo(out.size() + " account(s)");
+        if (!probe) {
+            System.out.println("    live status : unverified - re-run with --probe");
+            return;
+        }
+        String line = String.valueOf(m.getOrDefault("status", "?"));
+        if (m.containsKey("messagesTotal"))
+            line += "  (" + m.get("messagesTotal") + " msgs, " + m.get("threadsTotal") + " threads)";
+        if (m.containsKey("error")) line += "  - " + m.get("error");
+        System.out.println("    live status : " + line);
     }
 
     /**
@@ -695,6 +746,19 @@ public class GmailCli {
         }
     }
 
+    /**
+     * Deletes the draft itself. Labelling a draft's MESSAGE as TRASH does not remove it — the draft
+     * record survives and keeps showing in {@code drafts}, which is how three superseded drafts were
+     * left sitting in a mailbox next to the three that were meant to be sent.
+     */
+    private static void cmdDraftDelete(List<String> draftIds) throws IOException {
+        for (var id : draftIds) {
+            gmail.users().drafts().delete(USER, id).execute();
+            System.out.println("deleted draft " + id);
+        }
+        System.out.println("SUCCESS: deleted " + draftIds.size() + " draft(s)");
+    }
+
     private static void cmdDraftRead(Args a, String draftId) throws IOException {
         Draft d = gmail.users().drafts().get(USER, draftId).setFormat("full").execute();
         Message m = d.getMessage();
@@ -757,7 +821,7 @@ public class GmailCli {
             System.exit(2);
         }
 
-        MimeMessage mime = buildMime(email, to, cc, bcc, subject, body, html, a.attachments, inReplyTo, references);
+        MimeMessage mime = buildMime(email, to, cc, bcc, subject, body, html, a.attachments, a.inlines, inReplyTo, references);
 
         ByteArrayOutputStream buffer = new ByteArrayOutputStream();
         mime.writeTo(buffer);
@@ -830,16 +894,16 @@ public class GmailCli {
 
     private static MimeMessage buildMime(String from, String to, String cc, String bcc,
                                          String subject, String body, boolean html,
-                                         List<String> attachments,
+                                         List<String> attachments, List<String> inlines,
                                          String inReplyTo, String references) throws Exception {
         Properties props = new Properties();
         Session session = Session.getInstance(props, null);
         MimeMessage email = new MimeMessage(session);
 
         if (from != null && !from.isBlank()) email.setFrom(new InternetAddress(from));
-        addRecipients(email, javax.mail.Message.RecipientType.TO, to);
-        addRecipients(email, javax.mail.Message.RecipientType.CC, cc);
-        addRecipients(email, javax.mail.Message.RecipientType.BCC, bcc);
+        addRecipients(email, jakarta.mail.Message.RecipientType.TO, to);
+        addRecipients(email, jakarta.mail.Message.RecipientType.CC, cc);
+        addRecipients(email, jakarta.mail.Message.RecipientType.BCC, bcc);
         email.setSubject(subject == null ? "" : subject, "UTF-8");
 
         if (inReplyTo != null && !inReplyTo.isBlank()) email.setHeader("In-Reply-To", inReplyTo);
@@ -851,23 +915,57 @@ public class GmailCli {
             html = true;
         }
 
-        String contentType = "text/html; charset=utf-8";
+        var contentType = "text/html; charset=utf-8";
+        var hasInline = inlines != null && !inlines.isEmpty();
+        var hasAttach = attachments != null && !attachments.isEmpty();
 
-        if (attachments == null || attachments.isEmpty()) {
+        if (!hasInline && !hasAttach) {
             email.setContent(body, contentType);
-        } else {
-            MimeMultipart mp = new MimeMultipart();
-            MimeBodyPart textPart = new MimeBodyPart();
-            textPart.setContent(body, contentType);
-            mp.addBodyPart(textPart);
-            for (String path : attachments) {
-                MimeBodyPart att = new MimeBodyPart();
-                att.attachFile(path);
-                mp.addBodyPart(att);
-            }
-            email.setContent(mp);
+            return email;
         }
+
+        var htmlHolder = new MimeBodyPart();
+        if (hasInline) {
+            var related = new MimeMultipart("related");
+            var htmlPart = new MimeBodyPart();
+            htmlPart.setContent(body, contentType);
+            related.addBodyPart(htmlPart);
+            for (var path : inlines) related.addBodyPart(filePart(path, true));
+            if (!hasAttach) {
+                email.setContent(related);
+                return email;
+            }
+            htmlHolder.setContent(related);
+            htmlHolder.setHeader("Content-Type", related.getContentType());
+        } else {
+            htmlHolder.setContent(body, contentType);
+        }
+
+        var mixed = new MimeMultipart("mixed");
+        mixed.addBodyPart(htmlHolder);
+        for (var path : attachments) mixed.addBodyPart(filePart(path, false));
+        email.setContent(mixed);
         return email;
+    }
+
+    /**
+     * A file part. {@code attachFile} alone types everything it does not recognise as
+     * application/octet-stream — a .pdf included — so the content type is always restated from the name.
+     */
+    private static MimeBodyPart filePart(String path, boolean inline) throws Exception {
+        var f = new java.io.File(path);
+        var part = new MimeBodyPart();
+        part.attachFile(f);
+        var name = f.getName();
+        if (inline) {
+            part.setHeader("Content-ID", "<" + name + ">");
+            part.setDisposition(MimeBodyPart.INLINE);
+        }
+        part.setFileName(name);
+        var mime = java.net.URLConnection.guessContentTypeFromName(name);
+        part.setHeader("Content-Type", (mime != null ? mime : "application/octet-stream")
+                + "; name=\"" + name + "\"");
+        return part;
     }
 
     private static String plainTextToHtml(String text) {
@@ -883,7 +981,7 @@ public class GmailCli {
         return sb.length() > 0 ? sb.toString() : "<p></p>";
     }
 
-    private static void addRecipients(MimeMessage email, javax.mail.Message.RecipientType type, String csv) throws Exception {
+    private static void addRecipients(MimeMessage email, jakarta.mail.Message.RecipientType type, String csv) throws Exception {
         if (csv == null || csv.isBlank()) return;
         String normalized = csv.replace(';', ',');
         email.addRecipients(type, InternetAddress.parse(normalized));
@@ -1451,10 +1549,12 @@ public class GmailCli {
                   search-batch <query...> | --queries-file <path> | --queries-stdin
                         [-l <label>] [-n <max>] [--include-spam-trash] [--bodies] [--strip-quotes]
                   drafts [-n <max>]
+                  draft-delete <draftId...>  Delete draft(s). Labelling a draft's message TRASH does NOT
+                                          remove it; the draft record survives and still lists.
                   draft-read <draftId>
                   draft --to <a,b> [--cc ..] [--bcc ..] [-s <subject>]
                         (-b "<body>" | --body-file <path> | --body-stdin) [--html]
-                        [--attach <file> ...] [--reply-to <messageId>] [--thread <threadId>]
+                        [--attach <file> ...] [--inline <img> ...] [--reply-to <messageId>] [--thread <threadId>]
                   attachment <messageId> <attachmentId> [--out <path>]
 
                 Global flags:
@@ -1463,6 +1563,16 @@ public class GmailCli {
                    in shell history and AI transcripts. Use uskoag-wallet, or the hidden prompt.)
                   --json                  Machine-readable JSON output
                   --verbose, -v           Log progress to stderr
+
+                Inline images (draft):
+                  --inline <img>          Embed an image IN the html body. Reference it from your html
+                                          as <img src="cid:FILENAME"> using the file's plain name, e.g.
+                                          --inline shots/a.jpg  ->  <img src="cid:a.jpg">
+                                          Builds multipart/related (html first, then each image with a
+                                          bracketed Content-ID and inline disposition), nested inside
+                                          multipart/mixed when --attach is also given. Gmail renders
+                                          inline images only in that exact shape.
+                  --attach <file>         An ordinary attachment, shown below the message.
 
                 Gmail search examples (-q / search):
                   "from:alice@x.com is:unread"   "subject:invoice newer_than:7d"   "has:attachment label:work"
@@ -1497,6 +1607,7 @@ public class GmailCli {
         final Map<String, String> values = new LinkedHashMap<>();
         final List<String> positionals = new ArrayList<>();
         final List<String> attachments = new ArrayList<>();
+        final List<String> inlines = new ArrayList<>();
 
         Args(String[] argv) {
             for (int i = 0; i < argv.length; i++) {
@@ -1504,6 +1615,9 @@ public class GmailCli {
                 if (REPEATABLE_ATTACH.equals(tok)) {
                     if (i + 1 >= argv.length) throw new IllegalArgumentException("Missing value for " + tok);
                     attachments.add(argv[++i]);
+                } else if (REPEATABLE_INLINE.equals(tok)) {
+                    if (i + 1 >= argv.length) throw new IllegalArgumentException("Missing value for " + tok);
+                    inlines.add(argv[++i]);
                 } else if (VALUE_FLAGS.containsKey(tok)) {
                     if (i + 1 >= argv.length) throw new IllegalArgumentException("Missing value for " + tok);
                     values.put(VALUE_FLAGS.get(tok), argv[++i]);
