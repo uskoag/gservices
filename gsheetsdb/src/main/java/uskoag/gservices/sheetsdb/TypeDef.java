@@ -2,7 +2,7 @@ package uskoag.gservices.sheetsdb;
 
 import java.util.List;
 import java.util.function.Supplier;
-import xyz.jphil.datahelper.DataHelper_I;
+import datapotter.datahelper.DataHelper_I;
 
 /**
  * A document type, and the sheet that holds its documents.

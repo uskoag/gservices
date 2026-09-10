@@ -5,8 +5,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
-import xyz.jphil.datahelper.DataHelper_I;
-import xyz.jphil.datahelper.Field_I;
+import datapotter.datahelper.DataHelper_I;
+import datapotter.datahelper.Field_I;
 
 /**
  * Fluent construction of a {@link TypeDef}, terminated by {@link #__()} — the same shape as

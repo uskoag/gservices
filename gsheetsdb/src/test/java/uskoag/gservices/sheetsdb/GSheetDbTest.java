@@ -10,7 +10,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import uskoag.gservices.sheetsdb.testmodel.Treaty;
-import xyz.jphil.datahelper.Field;
+import datapotter.datahelper.Field;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;

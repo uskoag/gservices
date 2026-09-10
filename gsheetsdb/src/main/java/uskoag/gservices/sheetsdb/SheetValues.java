@@ -161,7 +161,7 @@ final class SheetValues {
         }
 
         if (target.isInstance(value)) return value;
-        return xyz.jphil.datahelper.DataHelper_I.convertType(value, target);
+        return datapotter.datahelper.DataHelper_I.convertType(value, target);
     }
 
     // ---- Java -> sheet cell ----------------------------------------------------

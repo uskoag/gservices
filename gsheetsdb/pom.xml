@@ -19,8 +19,8 @@
         flush. Modelled on the @ArcadeData/TypeDef ergonomics of uskoag-gdrive-core, without ArcadeDB.</description>
 
     <properties>
-        <datahelper.ver>1.0</datahelper.ver>
-        <datahelper.processor.ver>1.0</datahelper.processor.ver>
+        <datahelper.ver>1.3</datahelper.ver>
+        <datahelper.processor.ver>1.3</datahelper.processor.ver>
         <compiler.plugin.ver>3.13.0</compiler.plugin.ver>
         <junit.ver>5.11.4</junit.ver>
         <surefire.plugin.ver>3.5.4</surefire.plugin.ver>
@@ -60,7 +60,7 @@
           here so a consumer gets it transitively — this library defines no models of its own, the
           consumer's model classes are the ones that get annotated.
 
-          Deliberately NOT xyz-jphil-arcadedb-datahelper. Its generated _A base hard-implements
+          Deliberately NOT datapotter-arcadedbhelper. Its generated _A base hard-implements
           ArcadeDoc_I, which binds com.arcadedb.database.Document/Database/Edge/Vertex/RID — so the
           @ArcadeData route would drag arcadedb-engine onto the classpath of every consumer, for a
           graph engine nothing here ever calls. The base @Data annotation generates a strict superset
@@ -71,14 +71,14 @@
           hands us a configured Sheets instance and owns the question of where it came from.
         -->
         <dependency>
-            <groupId>io.github.xyz-jphil</groupId>
-            <artifactId>xyz-jphil-datahelper-base</artifactId>
+            <groupId>io.github.datapotter</groupId>
+            <artifactId>datapotter-datahelper-base</artifactId>
             <version>${datahelper.ver}</version>
         </dependency>
         <dependency>
-            <groupId>io.github.xyz-jphil</groupId>
-            <artifactId>xyz-jphil-datahelper-annotations</artifactId>
-            <version>${datahelper.ver}</version>
+            <groupId>io.github.datapotter</groupId>
+            <artifactId>datapotter-datahelper-annotations</artifactId>
+            <version>1.1</version>
         </dependency>
 
         <dependency>
@@ -139,8 +139,8 @@
                             </testIncludes>
                             <annotationProcessorPaths>
                                 <path>
-                                    <groupId>io.github.xyz-jphil</groupId>
-                                    <artifactId>xyz-jphil-datahelper-processor</artifactId>
+                                    <groupId>io.github.datapotter</groupId>
+                                    <artifactId>datapotter-datahelper-processor</artifactId>
                                     <version>${datahelper.processor.ver}</version>
                                 </path>
                             </annotationProcessorPaths>

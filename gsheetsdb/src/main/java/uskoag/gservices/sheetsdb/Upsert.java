@@ -1,7 +1,7 @@
 package uskoag.gservices.sheetsdb;
 
 import java.util.Collection;
-import xyz.jphil.datahelper.DataHelper_I;
+import datapotter.datahelper.DataHelper_I;
 
 /**
  * Typed writes over the documents of one type — the counterpart to {@link Query}, and named after

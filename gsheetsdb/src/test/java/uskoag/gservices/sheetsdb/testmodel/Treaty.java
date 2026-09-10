@@ -16,7 +16,7 @@ import static uskoag.gservices.sheetsdb.TypeDefBuilder.typeDef;
  * {@link SheetDates} converts at the edge. Same reason {@code status} is a {@code String} rather than
  * an enum.
  */
-@xyz.jphil.datahelper.Data
+@datapotter.datahelper.Data
 public final class Treaty extends Treaty_A {
 
     String treatyId;

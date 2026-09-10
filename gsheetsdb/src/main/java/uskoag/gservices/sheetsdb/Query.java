@@ -7,8 +7,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
-import xyz.jphil.datahelper.DataHelper_I;
-import xyz.jphil.datahelper.Field_I;
+import datapotter.datahelper.DataHelper_I;
+import datapotter.datahelper.Field_I;
 
 /**
  * Typed reads over the documents of one type.
