@@ -1,0 +1,42 @@
+package uskoag.gservices.docs;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/** uskoag-gdocscli — Google Docs from the command line. One switch line plus one Verb* class per verb. */
+public class GDocsCli {
+
+    public static void main(String[] args) {
+        Out.initStreams();
+        uskoag.gservices.Caller.record("uskoag-gdocscli", args);
+        var a = new ArrayList<>(List.of(args));
+
+        Out.verbose = Args.flag(a, "-v", "--verbose");
+        Out.quiet = Args.flag(a, "--quiet");
+        var wantsHelp = Args.flag(a, "--help", "-h");
+        Auth.email = Args.val(a, "--email", "-e");
+        DocRef.suggestions = Args.val(a, "--suggestions");
+
+        if (wantsHelp) { help(System.out); return; }
+        if (a.isEmpty()) { help(System.err); System.exit(1); }
+
+        var verb = a.remove(0).toLowerCase();
+        try {
+            switch (verb) {
+                case "help" -> help(System.out);
+                case "tabs" -> VerbTabs.run(a);
+                case "read", "get" -> VerbRead.run(a);
+                case "replace", "insert", "delete", "apply" -> VerbEdit.run(verb, a);
+                default -> {
+                    Out.error("unknown command: " + verb);
+                    help(System.err);
+                    System.exit(1);
+                }
+            }
+        } catch (Exception e) {
+            Out.fail(e);
+        }
+    }
+
+    static void help(java.io.PrintStream out) { out.print(Res.text("gdocs-help.txt")); }
+}

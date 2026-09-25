@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.github.uskoag</groupId>
+        <artifactId>uskoag-gservices-parent</artifactId>
+        <version>1.0</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>uskoag-gservices-gdocs_cli</artifactId>
+    <packaging>jar</packaging>
+
+    <description>Google Docs from the command line: read a document, every document tab included, as markdown, simple html, docx or the raw API json. Also importable as a library (the thin jar keeps its dependencies; the shaded uskoag-gdocscli.jar is the CLI).</description>
+
+    <properties>
+        <main.class>uskoag.gservices.docs.GDocsCli</main.class>
+        <cli.name>uskoag-gdocscli</cli.name>
+        <!-- Set true on CI or wherever uskoag-gdocscli.exe is not on PATH -->
+        <skip.aot.warmup>false</skip.aot.warmup>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>io.github.uskoag</groupId>
+            <artifactId>uskoag-gservices-docs</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <!--
+          The wallet client, and only the client: a thin protocol jar with no engine, no ArcadeDB and no
+          JavaFX behind it. It contributes a CredentialSource through ServiceLoader, so this binary uses
+          a wallet when one is installed and falls back to the console app-key prompt when none is.
+
+          Note the direction. The gservices *libraries* stay wallet-free — anyone embedding
+          uskoag-gservices-docs is untouched by this. Only the end-user binary, itself an application,
+          carries it. Build order on a clean machine: gservices libraries, then uskoag/wallet, then this.
+        -->
+        <dependency>
+            <groupId>io.github.uskoag</groupId>
+            <artifactId>uskoag-wallet-wire</artifactId>
+            <version>1.0</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.uskoag</groupId>
+            <artifactId>uskoag-gservices-oauth</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <!-- docx export is a Drive files.export, the Docs API has none -->
+        <dependency>
+            <groupId>io.github.uskoag</groupId>
+            <artifactId>uskoag-gservices-drive</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.google.code.gson</groupId>
+            <artifactId>gson</artifactId>
+            <version>${gson.ver}</version>
+        </dependency>
+
+        <!-- the simple-html rendering is built as a jsoup document -->
+        <dependency>
+            <groupId>org.jsoup</groupId>
+            <artifactId>jsoup</artifactId>
+            <version>${jsoup.ver}</version>
+        </dependency>
+
+        <!-- SetConsoleOutputCP 65001 so Devanagari and dashes render instead of mojibake -->
+        <dependency>
+            <groupId>io.github.xyz-jphil</groupId>
+            <artifactId>xyz-jphil-windows_console_set_unicode_output</artifactId>
+            <version>${unicode.console.ver}</version>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.5.1</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <!--
+                                finalName differs from the build finalName, so shade writes
+                                target/uskoag-gdocscli.jar and does NOT swap the main artifact.
+                                That is what lets this module be both a CLI and a library.
+                            -->
+                            <finalName>${cli.name}</finalName>
+                            <!--
+                                MUST stay false. The default (true) rewrites the installed pom to
+                                strip every shaded dependency, leaving a library consumer able to
+                                resolve this artifact but not google-api-services-docs.
+                                Harmless for a pure CLI, fatal for the dual role.
+                            -->
+                            <createDependencyReducedPom>false</createDependencyReducedPom>
+                            <transformers>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <mainClass>${main.class}</mainClass>
+                                    <manifestEntries>
+                                        <Enable-Native-Access>ALL-UNNAMED</Enable-Native-Access>
+                                    </manifestEntries>
+                                </transformer>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                            </transformers>
+                            <filters>
+                                <filter>
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                        <exclude>module-info.class</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!--
+                Build the JRC AOT cache at package time rather than on the first agent call, so a
+                warm run emits no bootstrap noise on either stream. The help flag is the right target:
+                it reaches no network and, unlike the old listperms, is not a verb that now redirects
+                to the wallet and exits non-zero.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <version>3.1.0</version>
+                <executions>
+                    <execution>
+                        <id>warm-aot-cache</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <skip>${skip.aot.warmup}</skip>
+                            <target>
+                                <exec executable="${cli.name}.exe" failonerror="false" resultproperty="aot.warmup.result">
+                                    <arg value="--help"/>
+                                </exec>
+                                <echo message="AOT warmup exit code: ${aot.warmup.result}"/>
+                            </target>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

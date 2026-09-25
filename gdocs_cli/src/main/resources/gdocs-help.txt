@@ -1,0 +1,97 @@
+uskoag-gdocscli -- Google Docs from the command line, through the USK OAG GServices Wallet.
+
+USAGE
+  uskoag-gdocscli -e <account> <verb> <doc> [options]
+
+  <doc> is a document id or any Google Docs URL containing one.
+
+VERBS
+  tabs <doc> [--json]
+      List every document tab, nested tabs included, in sidebar order:
+      position, tab id, size (API characters) and indented title.
+
+  read <doc> [--format md|html|json|docx] [--tab <sel>] [--out <file> | --out-dir <dir>]
+      Read the document. ALL TABS by default, each introduced by a marker line:
+        <!-- tab 2/5 id=t.abc123 title="Evidence" path="Case / Evidence" -->
+      --format md     (default) markdown: headings, **bold**, *italic*, ~~strike~~,
+                      links, nested lists, pipe tables, images, footnotes [^n].
+      --format html   simple html: h1-h6, p, ul/ol, table, b/i/u/s/a, and a span
+                      style for colour, highlight, size and font. One <section
+                      data-tab-id=...> per tab.
+      --format json   the Docs API's own structure, untouched (includeTabsContent).
+      --format docx   Drive export of the whole document, every tab. Binary, so it
+                      is written to --out, or to "<title>.docx" in the current dir.
+      Shorthands: --md --html --json --docx.
+      --tab <sel>     comma-separated; each a tab id (t.abc123), a 1-based position
+                      from `tabs`, or a title (exact, else a unique substring).
+      --out <file>    write there instead of stdout.
+      --out-dir <dir> one file per tab: NN-<title>.<ext>.
+
+EDIT VERBS  (DRY RUN by default: they print what would change. Add --apply to commit.)
+  Anchors are the OPENING TEXT of a paragraph, copied from `read` (** markers are ignored,
+  curly/straight quotes and non-breaking spaces match each other). An anchor must match
+  exactly one paragraph in the tab, or the command stops and lists the candidates.
+
+  replace <doc> --tab <sel> --find "<exact text>" --with "<text>" [--in "<paragraph start>"] [--all]
+      Fails if the text occurs 0 times; refuses more than once unless --in narrows it
+      or --all is given. Keeps the replaced text's formatting.
+
+  insert <doc> --tab <sel> --after "<paragraph start>" --text "<md>" [--text "<md>" ...] [--like "<paragraph start>"]
+      New paragraph(s) right after the anchor. Without --like each inherits the anchor's
+      style and list: after a bullet you get a bullet in the same list. --like copies
+      another paragraph's style instead (heading-like line, a bullet from another list,
+      plain body text). --text accepts **bold** and *italic* only.
+
+  delete <doc> --tab <sel> --from "<paragraph start>" [--to "<paragraph start>"]
+      Removes whole paragraphs, from..to inclusive (just --from for one). The dry run lists
+      every paragraph that goes. Reversible like any Docs edit (version history).
+      In a plan: {"op":"delete","tab":"Notes","from":"...","to":"..."}. A delete and a
+      re-insert can go in the same plan; they apply as one batch.
+
+  apply <doc> --plan <edits.json>
+      Many edits, one reviewed batch. JSON: {"edits":[ ... ]}, each edit one of
+        {"id":"E1","op":"replace","tab":"Summary","in":"Offices:","find":"Paris and Rome.","with":"Paris, Rome and Lisbon."}
+        {"id":"E2","op":"insert","tab":"Summary","after":"2019, Paris:","paragraphs":["**2021, Lisbon:** a second office."]}
+        {"id":"E3","op":"insert","tab":"Details","after":"[DRAFT NOTE","paragraphs":[
+            {"text":"**Where We Work**","like":"<a bold heading-like line>"},
+            {"text":"Our work spans ...","like":"<start of a body paragraph>"}]}
+      "skip": true keeps an edit in the plan without applying it. Several inserts after
+      the same anchor keep plan order; put a heading and what follows it in ONE insert.
+
+  Edit options:
+    --apply      commit. The whole batch is atomic and pinned to the revision just read:
+                 if anyone edited the document since, NOTHING is applied and it says so.
+    --requests   also print the exact batchUpdate JSON.
+  The dry run shows, per inserted paragraph, the list it joins or starts and the style of
+  each span (bold/italic, size, colour, font). After --apply the document is read back and
+  every inserted span is compared with the plan: VERIFIED, or VERIFY FAILED (exit 2) with
+  the differences. Font family is shown but not compared: Google stores a font equal to
+  the paragraph style's own as unset, so it can read back missing and still look identical.
+  A replace whose text occurs once in the tab uses Google's replaceAllText; one that is
+  only unique inside --in goes insert+restyle+delete. All Docs edits are ordinary edits to
+  the wallet (reversible through version history).
+
+GLOBAL OPTIONS
+  -e, --email <account>   required; the wallet decides whether this account may read.
+  --suggestions inline|accepted|original
+                          how suggested edits are shown. Default: Google's default for
+                          your access (inline for editors). Inline suggestions appear
+                          in md as {++inserted++} / {--deleted--}, in html as ins/del.
+  -v, --verbose           [INFO] lines on stderr.
+  -h, --help              this text.
+
+OUTPUT CONTRACT
+  stdout carries only the document (or SUCCESS: lines when writing files);
+  stderr carries [ERROR] always and [INFO] under -v. Exit 1 on any failure.
+
+NOTES
+  The wallet (uskoag-wallet.exe) must be running. Reading needs the account to hold
+  the Google Docs scope; docx export needs Drive read.
+  Image links in md/html are Google's temporary content URIs and expire.
+
+EXAMPLES
+  uskoag-gdocscli -e me@example.org tabs https://docs.google.com/document/d/<id>/edit
+  uskoag-gdocscli -e me@example.org read <id> > doc.md
+  uskoag-gdocscli -e me@example.org read <id> --tab 3 --html --out tab3.html
+  uskoag-gdocscli -e me@example.org read <id> --out-dir tabs\
+  uskoag-gdocscli -e me@example.org read <id> --docx --out doc.docx

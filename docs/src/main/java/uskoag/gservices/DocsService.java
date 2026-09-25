@@ -16,4 +16,13 @@ public class DocsService {
         ).setApplicationName(oauth.appName)
         .build();
     }
+
+    /** The wallet-aware route, the same shape as {@link SlidesService#slides(ServiceAccess, String)}. */
+    public static Docs docs(ServiceAccess access, String appName)
+            throws IOException, GeneralSecurityException {
+        var transport = GoogleNetHttpTransport.newTrustedTransport();
+        var builder = new Docs.Builder(transport, GsonFactory.getDefaultInstance(), access.initializer())
+                .setApplicationName(appName);
+        return access.applyTo(builder).build();
+    }
 }
