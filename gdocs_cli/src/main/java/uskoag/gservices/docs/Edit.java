@@ -22,4 +22,13 @@ sealed interface Edit {
     record Delete(String label, String tab, String from, String to, String note) implements Edit {}
 
     record NewPara(String text, String like) {}
+
+    /** One line saying what the edit does, for the journal: what a later reader needs to recognise it in a diff. */
+    static String describe(Edit e) {
+        return e.label() + " [" + e.tab() + "] " + switch (e) {
+            case Replace r -> "replace \"" + r.find() + "\" with \"" + r.with() + "\"";
+            case Insert i -> "insert after \"" + i.after() + "\": " + i.paras().stream().map(NewPara::text).toList();
+            case Delete d -> "delete \"" + d.from() + "\"" + (d.to() == null ? "" : " .. \"" + d.to() + "\"");
+        };
+    }
 }

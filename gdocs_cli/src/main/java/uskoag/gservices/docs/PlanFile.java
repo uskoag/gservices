@@ -14,10 +14,14 @@ import java.util.List;
  */
 final class PlanFile {
 
+    /** {"suggest": true, "edits": [...]} applies the whole plan as suggested edits (PRP 08). */
+    static boolean suggest;
+
     private PlanFile() {}
 
     static List<Edit> read(String file) throws Exception {
         var root = JsonParser.parseString(Files.readString(Path.of(file)));
+        suggest = root.isJsonObject() && root.getAsJsonObject().has("suggest") && root.getAsJsonObject().get("suggest").getAsBoolean();
         var arr = root.isJsonArray() ? root.getAsJsonArray() : root.getAsJsonObject().getAsJsonArray("edits");
         if (arr == null) Out.die(file + ": expected {\"edits\":[...]} or a JSON array");
         var out = new ArrayList<Edit>();

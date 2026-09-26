@@ -26,6 +26,10 @@ VERBS
                       from `tabs`, or a title (exact, else a unique substring).
       --out <file>    write there instead of stdout.
       --out-dir <dir> one file per tab: NN-<title>.<ext>.
+      --comments      (md) the text AND its conversation in one read: each suggestion's
+                      id after its markup, {++x++}[^s:suggest.abc], and after each tab
+                      its open threads with every post, who suggested what, and which
+                      ones are AWAITING an answer. The form to hand an AI.
 
 EDIT VERBS  (DRY RUN by default: they print what would change. Add --apply to commit.)
   Anchors are the OPENING TEXT of a paragraph, copied from `read` (** markers are ignored,
@@ -70,6 +74,159 @@ EDIT VERBS  (DRY RUN by default: they print what would change. Add --apply to co
   A replace whose text occurs once in the tab uses Google's replaceAllText; one that is
   only unique inside --in goes insert+restyle+delete. All Docs edits are ordinary edits to
   the wallet (reversible through version history).
+
+OWNER AND AI ACCOUNT
+  The AI can edit and comment from its OWN account, so Google's history and comment
+  authorship separate its work from people's without any inference.
+  identity set --owner <email> --ai <email>
+      owner = the person the AI serves; the only account whose words are instructions.
+      ai    = the account the AI edits and comments as; used when -e is not given.
+      Asks Drive, as each account, for its permissionId and display name (Google hides
+      the email of another domain's account, but not its permissionId). Both accounts
+      must be in the wallet; the AI account must be an EDITOR on each document.
+  identity [show] [--json]      identity clear   (back to one shared account)
+  With it set, history/diff mark authors [owner] or [AI, serving <owner>], comment
+  listings mark each post's role, and a thread is AWAITING when its last post is not
+  the AI account's. The AI(...) signature on comments is a separate setting
+  (--no-ai-sign, --ai-name) and stays on whichever account posts.
+
+VERSION HISTORY  (read-only; restoring a version is done in the Docs UI)
+  Every version is addressed by Google's REVISION NUMBER, its own edit counter (r140 is
+  the 140th). Drive's history lists only a few of them ("saved" versions, each with who
+  and when), but every number in between is still a real version that can be read and
+  compared, so a document's evolution can be walked edit by edit. Only the saved ones
+  carry an author and a time; an in-between number reports the span it falls in and who
+  saved the next one. Google merges fine-grained edits, so neither view is keystroke-exact.
+  Comments are not part of version history: no version holds or loses a comment.
+  The Docs API's own revisionId (ANLCKQ..., shown by `read`) is a different id and is not
+  accepted here; name the version by number, #n, or time instead.
+
+  history <doc> [--since <time>] [--until <time>] [--by <who>] [--json] [--links]
+      Saved versions, oldest first: #n, revision number, time with zone, who.
+      --by matches an email or display name (substring).  --links adds Drive's export URLs.
+
+  read <doc> --revision <rev> [--format md|txt|html|docx] [--out <file>]
+      The document as it was. Drive's export FLATTENS TABS into one file (the tab titles
+      appear as plain lines); the header line says so.
+
+  diff <doc> [--from <rev>] [--to <rev>] [--since <time>] [--by <who>] [--tab <sel>]
+      What changed, paragraph by paragraph, grouped under [tab › heading]:
+        ~ changed   same paragraph reworded; word-level inline diff [-old-]{+new+}
+        # replaced  paragraph rewritten in place beyond word matching (old, then new)
+        + added / - removed
+        > moved     the same paragraph, now elsewhere (and whether it was restyled)
+        = format    same words, different markup: bold/italic/link, or kind (h2 → h3,
+                    para → bullet). Colour, font and size are not in the export, so a
+                    change of only those is not seen.
+      A 3-word edit in a 1000-page document reports exactly those words; unchanged text
+      costs a scan, not a comparison (measured: 30,000 paragraphs a side in under a second).
+      Defaults: --to current, --from the saved version before --to.
+      --since <time>      from the version as it stood at that time.
+      --by <who>          with --since: from just before their first saved version after
+                          that time, to their last. "What did X change since my edit" is
+                          diff <doc> --since "2026-09-25 21:30 EAT" --by admin@...
+      --steps             walk from..to as PEOPLE'S DECISIONS: consecutive revisions by the
+                          same author are clubbed into one step and shown as their net
+                          change, each headed "by <who> [certain|inferred: why]".
+                          --each: every revision on its own instead.  --saved: only
+                          Drive's saved versions.  --every n: thin the walk.
+                          With --by, only the steps of that author.
+      --stat              counts only.  --json  the same, structured.  --context n  words
+                          kept around each inline change (default 8, -1 = whole paragraph).
+      --tabs "A,B"        tab titles to split the export by (default: the document's
+                          current tabs).  --no-tabs  treat the export as one tab.
+      --refresh           re-download versions instead of using the local cache.
+
+  WHO MADE A CHANGE. Three sources, strongest first, and every step says which it used:
+    certain   our journal: this tool records each edit it applies (revision numbers
+              before/after, account, that an AI agent drove it, the session and the
+              command) in ~/uskoag/gservices/gdocs/journal/<doc>.ndjson. Drive cannot
+              tell AI from a person on the same account; the journal can.
+    certain   Drive: a saved version names the account that saved it.
+    certain   Drive Activity: when only one person edited between two saved versions,
+              every revision in that span is theirs. (Wallet group "drive.activity".)
+    mixed     Drive Activity saw several people edit in that span: all are named, with
+              when each edited and how often; the span is not split further.
+              Activity names people by a Google person id; the tool names them by
+              matching the one person editing just before a saved version to that
+              version's author, and says "matched by time".
+    inferred  no Activity available: a revision between saved versions gets the author
+              of the saved version that closes its span, both neighbours named.
+              --no-activity forces this.
+  A plain diff lists "edited in between by" for its range; --steps attributes each change.
+
+  <rev>: 140 (revision number) · #3 (third saved version in `history`) · first ·
+         current (also latest, head) · head~5 · "2026-09-25 21:15 EAT" (the saved version
+         at or before that time) · "before 2026-09-26 09:00 EAT".
+  <time>: 2026-09-25 21:15 EAT · 2026-09-25 (start of day) · ISO 2026-09-25T18:15:00Z.
+  Versions are cached in ~/uskoag/gservices/gdocs/revisions/<doc>/ (a version never
+  changes), so a second walk makes no network call.
+
+NEW DOCUMENTS
+  Creating a file is Drive's job, so it lives in uskoag-gdrivecli, which files it straight
+  into the right folder (id, Drive URL, Drive path, or a real G:\ path):
+      uskoag-gdrivecli new doc "<name>" --in "G:\Shared drives\<drive>\<folder>" -e <account>
+  write <doc> --from <file.md> [--tab <sel>] [--apply]
+      Fill an EMPTY tab from simple markdown: # to ###### headings (Heading 1-6), "- "
+      bullets, "1. " numbered items, paragraphs, **bold**, *italic*. Consecutive items
+      form one list. Refuses a tab that already has text. Dry run unless --apply.
+
+IMAGES
+  images <doc> [--tab <sel>] [--json]
+      Every inline image: object id, tab, index, size, the paragraph it sits in, and
+      [suggested insertion] / [suggested deletion] when it is part of a pending suggestion.
+  image insert <doc> --tab <sel> --after "<paragraph start>" --image <file|https-url> [--width <inches>]
+      A new paragraph after the anchor holding the picture.
+  image replace <doc> <objectId> --image <file|https-url>
+      Direct: Google's replaceImage, keeping the old size (centre-cropped).
+      With --suggest: the new picture is inserted before the old one and the old one
+      deleted, both in ONE suggestion (Google applies replaceImage directly even in suggest
+      mode), so one accept swaps them and one reject keeps the old picture.
+  Both take --suggest, --note, --apply (dry run otherwise; a dry run uploads nothing).
+  A local file is uploaded to Drive, shared by link only for the insert (Docs fetches it
+  once and keeps its own copy), then trashed. The wallet recognises that upload as an image
+  by its file signature, so the share and the trash need no passphrase. --keep-upload
+  leaves it in Drive, still shared.
+
+SUGGESTED EDITS, NOTES AND COMMENTS  (Google Docs API Developer Preview since 2026-07-07)
+  If the Cloud project is not enrolled in the Workspace Developer Preview, Google refuses
+  these and the tool says so in one line.
+
+  --suggest    on replace / insert / delete / apply (or "suggest": true at the top of a plan):
+               the edits land as SUGGESTIONS for a human to accept or reject, instead of
+               changing the text. After --apply each edit's suggestion id(s) are listed; an
+               edit Google did not record as a suggestion is reported, and the exit code is 2.
+               The style check reads the document as if the suggestions were accepted.
+  --note "<why>"   (plan key "note") explains an edit. With --suggest it is posted as a
+               reply on that edit's own suggestion; without, as a comment on the new text.
+
+  AI SIGNATURE: everything this tool writes into a comment or reply starts "AI(<name>): ".
+    --ai-name <name>   e.g. --ai-name Claude-Opus5.5 (else env UKAG_AI_NAME, else "Claude").
+                       An agent should always pass its own model name.
+    --no-ai-sign       write this command's posts unsigned (only when the user asks).
+    A signature is recognised even when the editor has decorated it (^^AI^^, *AI*).
+
+  comments <doc> [--tab <sel>] [--status open|resolved|all] [--awaiting] [--mine] [--json]
+  suggestions <doc> [same options]
+      Threads with their location (tab, and the paragraph opening usable as an anchor),
+      quoted text or suggested change, and every post with its postId and author.
+      [AWAITING] = open, and the last post with text has no AI signature: a human spoke
+      and nobody has answered. `comments <doc> --awaiting` is the to-do list.
+
+  comment add <doc> --tab <sel> --para "<paragraph start>" [--find "<text in it>"] --text "..." [--assign <email>]
+  comment reply <doc> <threadId> --text "..." [--resolve] [--assign <email>]
+  comment resolve|reopen <doc> <threadId> [--text "..."]
+  comment edit <doc> <postId> --text "..."
+  comment delete <doc> <threadId|postId>
+  comment unsign <doc> <postId> | --all-mine
+      All are dry runs unless --apply. Text may come from --text-file <f>.
+      A resolve, reopen or assignment is sent as a BARE post after any text reply: Google
+      never deletes a post carrying an action, so no words are ever stuck in the thread.
+      edit/delete/unsign work only on posts this account wrote (Google's rule). A deleted
+      comment is NOT in version history. `unsign` strips the AI signature in place.
+
+  accept|reject <doc> <suggestionId...> | --mine | --all [--apply]
+  delete-suggestion <doc> <suggestionId...> | --mine [--apply]     (author only)
 
 GLOBAL OPTIONS
   -e, --email <account>   required; the wallet decides whether this account may read.

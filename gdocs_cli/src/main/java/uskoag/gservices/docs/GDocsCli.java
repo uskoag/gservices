@@ -14,8 +14,10 @@ public class GDocsCli {
         Out.verbose = Args.flag(a, "-v", "--verbose");
         Out.quiet = Args.flag(a, "--quiet");
         var wantsHelp = Args.flag(a, "--help", "-h");
-        Auth.email = Args.val(a, "--email", "-e");
+        Auth.email = Identity.acting(Args.val(a, "--email", "-e"));
         DocRef.suggestions = Args.val(a, "--suggestions");
+        AiSign.name = Args.val(a, "--ai-name");
+        AiSign.off = Args.flag(a, "--no-ai-sign");
 
         if (wantsHelp) { help(System.out); return; }
         if (a.isEmpty()) { help(System.err); System.exit(1); }
@@ -25,8 +27,17 @@ public class GDocsCli {
             switch (verb) {
                 case "help" -> help(System.out);
                 case "tabs" -> VerbTabs.run(a);
+                case "history", "revisions" -> VerbHistory.run(a);
+                case "identity" -> VerbIdentity.run(a);
+                case "diff", "compare" -> VerbDiff.run(a);
                 case "read", "get" -> VerbRead.run(a);
                 case "replace", "insert", "delete", "apply" -> VerbEdit.run(verb, a);
+                case "comments", "suggestions" -> VerbComments.list(verb, a);
+                case "comment" -> VerbComments.run(a);
+                case "write" -> VerbWrite.run(a);
+                case "images" -> VerbImage.list(a);
+                case "image" -> VerbImage.run(a);
+                case "accept", "reject", "delete-suggestion" -> VerbSuggestions.run(verb, a);
                 default -> {
                     Out.error("unknown command: " + verb);
                     help(System.err);

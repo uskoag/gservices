@@ -18,6 +18,8 @@ public final class VerbRead {
     private VerbRead() {}
 
     static void run(List<String> a) throws Exception {
+        var rev = Args.val(a, "--revision", "-r");
+        if (rev != null) { VerbRevRead.run(rev, a); return; }
         var fmt = Args.valOr(a, "--format", "md").toLowerCase();
         if (Args.flag(a, "--md")) fmt = "md";
         if (Args.flag(a, "--html")) fmt = "html";
@@ -26,12 +28,15 @@ public final class VerbRead {
         var sel = Args.val(a, "--tab", "-t");
         var out = Args.val(a, "--out", "-o");
         var outDir = Args.val(a, "--out-dir");
+        var comments = Args.flag(a, "--comments");
         var id = DocRef.id(Args.req(a, "<doc>"));
         Args.noneLeft(a, "read");
         if (fmt.equals("docx")) { Docx.export(id, sel, out); return; }
         if (!Set.of("md", "html", "json").contains(fmt)) Out.die("--format must be md, html, json or docx");
 
-        var doc = DocRef.get(id);
+        if (comments && !fmt.equals("md")) Out.die("--comments works with --format md");
+        var doc = comments ? Preview.get(id) : DocRef.get(id);
+        if (comments) { MdInline.showSuggestionIds = true; threads = DocThread.all(doc); }
         var all = Tabs.flat(doc);
         var tabs = Tabs.select(all, sel);
         if (outDir != null) { perTab(doc, all, tabs, fmt, Path.of(outDir)); return; }
@@ -46,6 +51,27 @@ public final class VerbRead {
         };
     }
 
+    /** Set by --comments: the document's threads, rendered after the tab they sit in. */
+    private static List<DocThread> threads;
+
+    /** One tab's open threads, as a block an AI reads together with the text: ids, where, and every post. */
+    private static String threadsOf(Tab t) {
+        var mine = threads.stream().filter(x -> Tabs.id(t).equals(x.tabId()) && "OPEN".equals(x.status())).toList();
+        var b = new StringBuilder("<!-- open threads in this tab: " + mine.size() + " -->");
+        for (var x : mine) {
+            b.append("\n\n> **[").append(x.isComment() ? "c:" : "s:").append(x.id()).append("]**")
+             .append(x.head() == null ? "" : " by " + x.head().author()).append(x.awaiting() ? " AWAITING an answer" : "").append(" — ¶ \"").append(x.anchorText()).append("\"");
+            if (x.quote() != null && !x.quote().isBlank()) b.append(" — on \"").append(x.quote().replace("\n", " ")).append("\"");
+            if (x.summary() != null && !x.summary().isBlank()) b.append(" — change: ").append(x.summary().replace("\n", " / "));
+            for (var p : x.posts()) {
+                if (p.deleted() || ((p.content() == null || p.content().isBlank()) && p.action() == null)) continue;
+                b.append("\n>\n> ").append(p.author()).append(p.action() == null ? "" : " [" + p.action() + "]").append(": ")
+                 .append(p.content() == null ? "" : p.content().replace("\n", " "));
+            }
+        }
+        return b.toString();
+    }
+
     private static String md(Document doc, List<Tab> all, List<Tab> tabs) {
         var parts = new ArrayList<String>();
         parts.add("<!-- document: \"" + doc.getTitle() + "\" id=" + doc.getDocumentId() + " revision=" + doc.getRevisionId()
@@ -54,6 +80,7 @@ public final class VerbRead {
             parts.add("<!-- tab " + (all.indexOf(t) + 1) + "/" + all.size() + " id=" + Tabs.id(t) + " title=\"" + Tabs.title(t)
                     + "\" path=\"" + Tabs.path(t, all) + "\" -->");
             parts.add(new MdRender(t.getDocumentTab()).render());
+            if (threads != null) parts.add(threadsOf(t));
         }
         return String.join("\n\n", parts).strip() + "\n";
     }

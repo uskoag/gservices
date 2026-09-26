@@ -65,8 +65,8 @@ final class MdInline {
         if (s != null && on(s.getStrikethrough())) core = "~~" + core + "~~";
         if (s != null && on(s.getItalic())) core = "*" + core + "*";
         if (s != null && on(s.getBold())) core = "**" + core + "**";
-        if (nonEmpty(r.getSuggestedInsertionIds())) core = "{++" + core + "++}";
-        if (nonEmpty(r.getSuggestedDeletionIds())) core = "{--" + core + "--}";
+        if (nonEmpty(r.getSuggestedInsertionIds())) core = "{++" + core + "++}" + ids(r.getSuggestedInsertionIds());
+        if (nonEmpty(r.getSuggestedDeletionIds())) core = "{--" + core + "--}" + ids(r.getSuggestedDeletionIds());
         return lead + core + trail;
     }
 
@@ -88,6 +88,13 @@ final class MdInline {
         if (e.getHorizontalRule() != null) return "\n---\n";
         if (e.getEquation() != null) return "[equation]";
         return "";
+    }
+
+    /** read --comments: each suggestion's id after its markup, so an AI can accept, reject or reply to it by id. */
+    static boolean showSuggestionIds;
+
+    private static String ids(java.util.List<String> ids) {
+        return showSuggestionIds ? "[^s:" + String.join(",", ids) + "]" : "";
     }
 
     int footnote(String id) { return footnotes.computeIfAbsent(id, k -> footnotes.size() + 1); }

@@ -46,6 +46,11 @@ public final class Out {
         System.out.println("SUCCESS: " + m);
     }
 
+    /** Acting as the AI account, a 403/404 is almost always a document not shared with it. */
+    private static String aiHint() {
+        return Identity.actingAsAi() ? " — acting as the AI account " + Auth.email + ": the owner must share this document with it as an editor (or pass -e <owner> to act as the owner)" : "";
+    }
+
     static void die(String m) { error(m); System.exit(1); }
 
     /** One greppable line per failure, preferring the API's own message over the status line. */
@@ -55,8 +60,8 @@ public final class Out {
             var msg = (g.getDetails() != null && g.getDetails().getMessage() != null)
                     ? g.getDetails().getMessage() : g.getStatusMessage();
             error(switch (code) {
-                case 403 -> "PERMISSION DENIED (403): " + msg;
-                case 404 -> "NOT FOUND (404): " + msg;
+                case 403 -> "PERMISSION DENIED (403): " + msg + aiHint();
+                case 404 -> "NOT FOUND (404): " + msg + aiHint();
                 case 401 -> "AUTH FAILURE (401): " + msg;
                 case 429 -> "RATE LIMITED (429): " + msg;
                 default -> "API ERROR " + code + ": " + msg;

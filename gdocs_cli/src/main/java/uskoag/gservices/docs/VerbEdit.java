@@ -17,6 +17,7 @@ public final class VerbEdit {
     static void run(String verb, List<String> a) throws Exception {
         var apply = Args.flag(a, "--apply");
         var showRequests = Args.flag(a, "--requests");
+        var suggestFlag = Args.flag(a, "--suggest");
         var id = DocRef.id(Args.req(a, "<doc>"));
         var edits = switch (verb) {
             case "replace" -> List.<Edit>of(new Edit.Replace("replace", Args.val(a, "--tab", "-t"), Args.val(a, "--in"),
@@ -41,23 +42,96 @@ public final class VerbEdit {
             Out.data("[" + edits.get(p.order()).label() + "] " + p.report().get(0));
             p.report().subList(1, p.report().size()).forEach(Out::data);
         });
-        var batch = new BatchUpdateDocumentRequest().setRequests(reqs).setWriteControl(new WriteControl().setRequiredRevisionId(doc.getRevisionId()));
+        final var suggest = suggestFlag || PlanFile.suggest;
+        for (var e : edits) if (e.note() != null && !suggest && e instanceof Edit.Delete)
+            Out.die(e.label() + ": a note on a direct delete has nothing left to attach to; apply it with --suggest, or drop the note");
+        edits.stream().filter(e -> e.note() != null && !e.note().isBlank())
+                .forEach(e -> Out.data("[" + e.label() + "] note " + (suggest ? "(reply on its suggestion)" : "(comment on the new text)") + ": " + AiSign.sign(e.note().strip())));
+        var wc = new WriteControl().setRequiredRevisionId(doc.getRevisionId());
+        if (suggest) Preview.suggestMode(wc);
+        var batch = new BatchUpdateDocumentRequest().setRequests(reqs).setWriteControl(wc);
         if (showRequests) Out.data(com.google.api.client.json.gson.GsonFactory.getDefaultInstance().toPrettyString(batch));
         if (!apply) {
             Out.data("DRY RUN — " + edits.size() + " edit(s), " + reqs.size() + " request(s), against revision " + doc.getRevisionId()
-                    + ". Nothing sent; re-run with --apply to commit.");
+                    + (suggest ? ", as SUGGESTIONS" : "") + ". Nothing sent; re-run with --apply to commit.");
             return;
         }
-        var res = Auth.docs().documents().batchUpdate(id, batch).execute();
+        var res = Journal.around(id, suggest ? "suggest" : verb, String.join(" | ", edits.stream().map(Edit::describe).toList()),
+                () -> suggest ? Preview.send(id, reqs, wc) : Auth.docs().documents().batchUpdate(id, batch).execute());
         var rev = res.getWriteControl() == null ? "?" : res.getWriteControl().getRequiredRevisionId();
-        Out.success(edits.size() + " edit(s) applied in one batch (" + reqs.size() + " requests); new revision " + rev);
-        verify(id, planned);
+        Out.success(edits.size() + " edit(s) applied in one batch (" + reqs.size() + " requests)" + (suggest ? " as suggestions" : "") + "; new revision " + rev);
+        var noSuggestion = suggest ? suggestionReport(planned, edits, res) : List.<String>of();
+        postNotes(id, planned, edits, res, suggest);
+        verify(id, planned, suggest);
+        if (!noSuggestion.isEmpty()) System.exit(2);
+    }
+
+    /** Suggestion ids each planned edit created, from the 1:1 suggestionResponses; the requests were sent in planned order. */
+    private static Map<Integer, List<String>> createdByEdit(List<Planned> planned, BatchUpdateDocumentResponse res) {
+        var created = Preview.createdSuggestionIds(res);
+        var out = new HashMap<Integer, List<String>>();
+        var at = 0;
+        for (var p : planned) {
+            var ids = new ArrayList<String>();
+            for (var i = at; i < at + p.requests().size() && i < created.size(); i++) for (var s : created.get(i)) if (!ids.contains(s)) ids.add(s);
+            out.put(p.order(), ids);
+            at += p.requests().size();
+        }
+        return out;
+    }
+
+    /** An edit that produced no suggestion was applied directly, or not at all: either way the reviewer must hear it. */
+    private static List<String> suggestionReport(List<Planned> planned, List<Edit> edits, BatchUpdateDocumentResponse res) {
+        var bad = new ArrayList<String>();
+        createdByEdit(planned, res).entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(e -> {
+            var label = edits.get(e.getKey()).label();
+            if (e.getValue().isEmpty()) bad.add(label);
+            Out.data("[" + label + "] suggestion(s): " + (e.getValue().isEmpty() ? "NONE — Google did not record this edit as a suggestion" : String.join(", ", e.getValue())));
+        });
+        return bad;
+    }
+
+    /** Second batch, after the edit: each note as a signed reply on its suggestion, or as a comment on the text a direct edit wrote. */
+    private static void postNotes(String id, List<Planned> planned, List<Edit> edits, BatchUpdateDocumentResponse res, boolean suggest) throws Exception {
+        if (edits.stream().noneMatch(e -> e.note() != null && !e.note().isBlank())) return;
+        var reqs = new ArrayList<Request>();
+        if (suggest) {
+            for (var e : createdByEdit(planned, res).entrySet()) {
+                var edit = edits.get(e.getKey());
+                if (edit.note() == null || edit.note().isBlank()) continue;
+                if (e.getValue().isEmpty()) { Out.error(edit.label() + ": no suggestion to attach the note to; note not posted"); continue; }
+                reqs.add(Preview.replyToSuggestion(e.getValue().get(0), AiSign.sign(edit.note().strip())));
+            }
+        } else {
+            var all = Tabs.flat(DocRef.get(id));
+            for (var edit : edits) {
+                if (edit.note() == null || edit.note().isBlank()) continue;
+                var tab = edit.tab() == null ? all.get(0) : Tabs.select(all, edit.tab()).get(0);
+                var scope = new Scope(tab, Para.of(tab.getDocumentTab()));
+                int[] range = switch (edit) {
+                    case Edit.Replace r -> { var hits = scope.occurrences(r.with(), null); yield hits.isEmpty() ? null : new int[]{hits.get(0), hits.get(0) + Para.norm(r.with()).length()}; }
+                    case Edit.Insert ins -> {
+                        var want = Para.norm(Segments.parse(ins.paras().get(0).text()).plain());
+                        var p = scope.paras().stream().filter(x -> x.plain().equals(want)).findFirst().orElse(null);
+                        yield p == null ? null : new int[]{p.start(), p.end() - 1};
+                    }
+                    case Edit.Delete d -> null;
+                };
+                if (range == null) { Out.error(edit.label() + ": could not find the new text again to attach the note; note not posted"); continue; }
+                reqs.add(Preview.insertComment(Tabs.id(tab), range[0], range[1], AiSign.sign(edit.note().strip()), null));
+            }
+        }
+        if (reqs.isEmpty()) return;
+        Preview.send(id, reqs, null);
+        Out.success(reqs.size() + " note(s) posted");
     }
 
     /** Read the document again and compare every inserted span with what was planned, so a style Google dropped is reported rather than found later. */
-    private static void verify(String id, List<Planned> planned) throws Exception {
+    private static void verify(String id, List<Planned> planned, boolean suggest) throws Exception {
         var expects = planned.stream().flatMap(p -> p.expects().stream()).toList();
         if (expects.isEmpty()) return;
+        // A suggestion is checked as the reviewer will get it once accepted.
+        if (suggest) DocRef.suggestions = "accepted";
         var diffs = Expect.verify(expects, DocRef.get(id));
         if (diffs.isEmpty()) { Out.data("VERIFIED: all " + expects.size() + " inserted span(s) read back with the planned bold/italic/size/colour"); return; }
         Out.data("VERIFY FAILED: " + diffs.size() + " of " + expects.size() + " inserted span(s) differ from the plan:");
