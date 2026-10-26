@@ -1,5 +1,6 @@
 package uskoag.gservices.docs;
 
+import uskoag.gservices.comments.Identity;
 import com.google.api.client.googleapis.json.GoogleJsonResponseException;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -35,6 +36,8 @@ public final class Out {
     static void info(String m) { if (verbose) System.err.println("[INFO] " + m); }
 
     static void error(String m) { System.err.println("[ERROR] " + m); }
+
+    static void warn(String m) { System.err.println("[WARN] " + m); }
 
     static void data(String s) { System.out.println(s); }
 

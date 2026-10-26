@@ -3,6 +3,7 @@ package uskoag.gservices.docs;
 import com.google.api.client.http.FileContent;
 import com.google.api.services.drive.model.File;
 import com.google.api.services.drive.model.Permission;
+import java.net.URI;
 import java.nio.file.*;
 
 /**
@@ -38,6 +39,22 @@ final class Images {
         } catch (Exception e) {
             Out.error("could not trash the temporary upload " + s.uploadedId() + " (it is still shared by link): " + e.getMessage());
         }
+    }
+
+    /**
+     * Bytes to crop locally — from a local file, or downloaded from an https URL (including
+     * Google's own temporary content URI for an image already sitting in a document).
+     * There is no Docs API request that changes a picture already inserted (checked against
+     * the full Request model: only insertInlineImage and replaceImage touch images, and
+     * replaceImage keeps the old size and cannot set crop offsets), so cropping means
+     * downloading the current picture, cutting it locally, and inserting the result in its place.
+     */
+    static byte[] bytesOf(String ref) throws Exception {
+        if (ref.startsWith("https://") || ref.startsWith("http://"))
+            try (var in = URI.create(ref).toURL().openStream()) { return in.readAllBytes(); }
+        var p = Path.of(ref);
+        if (!Files.isRegularFile(p)) Out.die("no such image file: " + ref);
+        return Files.readAllBytes(p);
     }
 
     static String mime(String n) {

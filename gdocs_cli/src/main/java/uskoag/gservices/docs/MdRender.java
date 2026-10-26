@@ -16,12 +16,14 @@ final class MdRender {
     private final DocumentTab tab;
     private final Map<String, Integer> footnotes = new LinkedHashMap<>();
     private final MdInline inline;
+    private final ListLabel labels;
     private final List<String> out = new ArrayList<>();
     private boolean lastWasItem;
 
     MdRender(DocumentTab tab) {
         this.tab = tab;
         this.inline = new MdInline(tab, footnotes);
+        this.labels = new ListLabel(tab);
     }
 
     String render() {
@@ -44,7 +46,7 @@ final class MdRender {
         var text = inline.line(p.getElements());
         if (p.getBullet() != null) {
             if (!lastWasItem) out.add("");
-            out.add("  ".repeat(level(p)) + (ordered(p, tab) ? "1. " : "- ") + text);
+            out.add("    ".repeat(level(p)) + labels.next(p) + " " + text);
             lastWasItem = true;
             return;
         }

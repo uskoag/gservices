@@ -1,5 +1,7 @@
 package uskoag.gservices.docs;
 
+import uskoag.gservices.comments.Identity;
+import uskoag.gservices.comments.AiSign;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.nio.file.*;

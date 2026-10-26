@@ -1,5 +1,7 @@
 package uskoag.gservices.docs;
 
+import uskoag.gservices.comments.Identity;
+import uskoag.gservices.comments.AiSign;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -15,6 +17,7 @@ public class GDocsCli {
         Out.quiet = Args.flag(a, "--quiet");
         var wantsHelp = Args.flag(a, "--help", "-h");
         Auth.email = Identity.acting(Args.val(a, "--email", "-e"));
+        Identity.reading = () -> Auth.email;
         DocRef.suggestions = Args.val(a, "--suggestions");
         AiSign.name = Args.val(a, "--ai-name");
         AiSign.off = Args.flag(a, "--no-ai-sign");
@@ -27,6 +30,12 @@ public class GDocsCli {
             switch (verb) {
                 case "help" -> help(System.out);
                 case "tabs" -> VerbTabs.run(a);
+                case "tab" -> VerbTab.run(a);
+                case "footnote" -> VerbFootnote.run(a);
+                case "link" -> VerbLink.run(a);
+                case "toc" -> VerbToc.run(a);
+                case "highlight" -> VerbHighlight.run(a);
+                case "align" -> VerbAlign.run(a);
                 case "history", "revisions" -> VerbHistory.run(a);
                 case "identity" -> VerbIdentity.run(a);
                 case "diff", "compare" -> VerbDiff.run(a);
@@ -35,6 +44,8 @@ public class GDocsCli {
                 case "comments", "suggestions" -> VerbComments.list(verb, a);
                 case "comment" -> VerbComments.run(a);
                 case "write" -> VerbWrite.run(a);
+                case "import" -> VerbImport.run(a);
+                case "list" -> VerbList.run(a);
                 case "images" -> VerbImage.list(a);
                 case "image" -> VerbImage.run(a);
                 case "accept", "reject", "delete-suggestion" -> VerbSuggestions.run(verb, a);

@@ -1,5 +1,6 @@
 package uskoag.gservices.docs;
 
+import uskoag.gservices.comments.AiSign;
 import com.google.api.services.docs.v1.model.*;
 import java.util.*;
 import java.util.List;
@@ -20,10 +21,11 @@ public final class VerbEdit {
         var suggestFlag = Args.flag(a, "--suggest");
         var id = DocRef.id(Args.req(a, "<doc>"));
         var edits = switch (verb) {
-            case "replace" -> List.<Edit>of(new Edit.Replace("replace", Args.val(a, "--tab", "-t"), Args.val(a, "--in"),
-                    Args.val(a, "--find"), Args.val(a, "--with"), Args.flag(a, "--all"), Args.val(a, "--note")));
+            case "replace" -> List.<Edit>of(new Edit.Replace("replace", Args.val(a, "--tab", "-t"), Args.val(a, "--in"), Args.intVal(a, "--occurrence"),
+                    Args.val(a, "--find"), Args.val(a, "--with"), Args.flag(a, "--all"), Args.flag(a, "--literal"), Args.val(a, "--note")));
             case "insert" -> List.<Edit>of(insertFromFlags(a));
-            case "delete" -> List.<Edit>of(new Edit.Delete("delete", Args.val(a, "--tab", "-t"), Args.val(a, "--from"), Args.val(a, "--to"), Args.val(a, "--note")));
+            case "delete" -> List.<Edit>of(new Edit.Delete("delete", Args.val(a, "--tab", "-t"), Args.val(a, "--from"), Args.intVal(a, "--occurrence"),
+                    Args.val(a, "--to"), Args.intVal(a, "--to-occurrence"), Args.flag(a, "--to-end"), Args.val(a, "--note")));
             default -> PlanFile.read(Optional.ofNullable(Args.val(a, "--plan")).orElseGet(() -> { Out.die("apply needs --plan <file.json>"); return null; }));
         };
         Args.noneLeft(a, verb);
@@ -32,6 +34,7 @@ public final class VerbEdit {
         DocRef.suggestions = "inline";
         var doc = DocRef.get(id);
         var all = Tabs.flat(doc);
+        Links.tabs = all;
         var planned = new ArrayList<Planned>();
         for (var i = 0; i < edits.size(); i++) planned.add(resolve(i, edits.get(i), all, edits));
         planned.sort(Comparator.comparing(Planned::tabId).thenComparing(Comparator.comparingInt(Planned::at).reversed())
@@ -43,7 +46,7 @@ public final class VerbEdit {
             p.report().subList(1, p.report().size()).forEach(Out::data);
         });
         final var suggest = suggestFlag || PlanFile.suggest;
-        for (var e : edits) if (e.note() != null && !suggest && e instanceof Edit.Delete)
+        for (var e : edits) if (e.note() != null && !suggest && (e instanceof Edit.Delete || e instanceof Edit.TocDelete))
             Out.die(e.label() + ": a note on a direct delete has nothing left to attach to; apply it with --suggest, or drop the note");
         edits.stream().filter(e -> e.note() != null && !e.note().isBlank())
                 .forEach(e -> Out.data("[" + e.label() + "] note " + (suggest ? "(reply on its suggestion)" : "(comment on the new text)") + ": " + AiSign.sign(e.note().strip())));
@@ -116,6 +119,7 @@ public final class VerbEdit {
                         yield p == null ? null : new int[]{p.start(), p.end() - 1};
                     }
                     case Edit.Delete d -> null;
+                    case Edit.TocDelete t -> null;
                 };
                 if (range == null) { Out.error(edit.label() + ": could not find the new text again to attach the note; note not posted"); continue; }
                 reqs.add(Preview.insertComment(Tabs.id(tab), range[0], range[1], AiSign.sign(edit.note().strip()), null));
@@ -126,15 +130,22 @@ public final class VerbEdit {
         Out.success(reqs.size() + " note(s) posted");
     }
 
-    /** Read the document again and compare every inserted span with what was planned, so a style Google dropped is reported rather than found later. */
+    /** Read the document again and compare every inserted span, and every paragraph's list membership,
+     * with what was planned, so a style (or a bullet) Google dropped is reported rather than found later. */
     private static void verify(String id, List<Planned> planned, boolean suggest) throws Exception {
         var expects = planned.stream().flatMap(p -> p.expects().stream()).toList();
-        if (expects.isEmpty()) return;
+        var bulletExpects = planned.stream().flatMap(p -> p.bulletExpects().stream()).toList();
+        var alignWants = planned.stream().flatMap(p -> p.alignWants().stream()).toList();
+        if (expects.isEmpty() && bulletExpects.isEmpty() && alignWants.isEmpty()) return;
         // A suggestion is checked as the reviewer will get it once accepted.
         if (suggest) DocRef.suggestions = "accepted";
-        var diffs = Expect.verify(expects, DocRef.get(id));
-        if (diffs.isEmpty()) { Out.data("VERIFIED: all " + expects.size() + " inserted span(s) read back with the planned bold/italic/size/colour"); return; }
-        Out.data("VERIFY FAILED: " + diffs.size() + " of " + expects.size() + " inserted span(s) differ from the plan:");
+        var doc = DocRef.get(id);
+        var diffs = new ArrayList<>(Expect.verify(expects, doc));
+        diffs.addAll(Expect.verifyBullets(bulletExpects, doc));
+        diffs.addAll(AlignCheck.verify(alignWants, doc));
+        var total = expects.size() + bulletExpects.size() + alignWants.size();
+        if (diffs.isEmpty()) { Out.data("VERIFIED: all " + total + " check(s) read back with the planned bold/italic/size/colour/link/list membership/alignment"); return; }
+        Out.data("VERIFY FAILED: " + diffs.size() + " of " + total + " check(s) differ from the plan:");
         diffs.forEach(d -> Out.data("  " + d));
         System.exit(2);
     }
@@ -142,11 +153,23 @@ public final class VerbEdit {
     private static Edit insertFromFlags(List<String> a) {
         var tab = Args.val(a, "--tab", "-t");
         var after = Args.val(a, "--after");
+        var afterImage = Args.val(a, "--after-image");
+        if (afterImage != null) { if (after != null) Out.die("give --after or --after-image, not both"); after = Scope.IMAGE + afterImage; }
+        var fmt = ParaFmt.of(a, false);
+        var afterOcc = Args.intVal(a, "--occurrence");
         var like = Args.val(a, "--like");
+        var style = Args.val(a, "--style");
+        if (like != null && style != null) Out.die("give --like or --style, not both");
+        var list = Args.val(a, "--list");
+        var preset = Args.val(a, "--preset");
+        var level = Args.intVal(a, "--level");
+        ListPresets.check("insert", list, preset, level);
+        var spacing = Args.val(a, "--spacing");
+        if (spacing != null && !spacing.equals("tight")) Out.die("--spacing must be \"tight\"");
         var note = Args.val(a, "--note");
         var paras = new ArrayList<Edit.NewPara>();
-        for (var t = Args.val(a, "--text"); t != null; t = Args.val(a, "--text")) paras.add(new Edit.NewPara(t, like));
-        return new Edit.Insert("insert", tab, after, paras, note);
+        for (var t = Args.val(a, "--text"); t != null; t = Args.val(a, "--text")) paras.add(new Edit.NewPara(t, like, style, list, spacing, level, preset, fmt));
+        return new Edit.Insert("insert", tab, after, afterOcc, MdList.expand(paras), note);
     }
 
     private static Planned resolve(int i, Edit e, List<Tab> all, List<Edit> edits) {
@@ -157,6 +180,7 @@ public final class VerbEdit {
             case Edit.Replace r -> BuildReplace.build(i, r, scope, collides(r, e, edits, all));
             case Edit.Insert ins -> BuildInsert.build(i, ins, scope);
             case Edit.Delete d -> BuildDelete.build(i, d, scope);
+            case Edit.TocDelete t -> BuildToc.build(i, t, scope);
         };
     }
 
@@ -176,6 +200,7 @@ public final class VerbEdit {
                 case Edit.Replace x -> x.with() == null ? "" : x.with();
                 case Edit.Insert x -> String.join("\n", x.paras().stream().map(p -> Segments.parse(p.text()).plain()).toList());
                 case Edit.Delete x -> "";
+                case Edit.TocDelete x -> "";
             };
             if (Para.norm(written).contains(find)) return true;
         }

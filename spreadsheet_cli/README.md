@@ -424,6 +424,25 @@ uskoag-gsheetscli describeschema ID --sheets Contacts --header-row 2 --col-end B
 - `--format json` (default), `md`, or `text`. 3 API calls total, regardless of sheet count.
 - Ports the design (not the code) of a separate reference tool built for the same purpose.
 
+### History, diff, protect — who broke the sheet, what changed, and stopping it happening again
+
+```bash
+uskoag-gsheetscli -e ME history ID --who --since 2026-10-02     # saved versions + who edited each span (Drive Activity)
+uskoag-gsheetscli -e ME snapshot ID --label after-repair         # values+formulas of every tab, saved locally
+uskoag-gsheetscli -e ME diff ID                                  # newest snapshot -> now: structure, then cells, then who
+uskoag-gsheetscli -e ME diff ID --sheet "Platform Report" --formulas
+uskoag-gsheetscli -e ME diff ID --from sheet:COPY_ID --from-time "2026-10-02 04:11 EAT"   # against a copy of an old version
+uskoag-gsheetscli -e ME protect ID "Platform Report" --unprotected-ranges "B2:B40" --description "formulas" --apply
+uskoag-gsheetscli -e ME protect ID Tracker A1:Z1 --editors a@x,b@y --apply
+uskoag-gsheetscli -e ME protect --list ID --json
+uskoag-gsheetscli -e ME protect --remove ID 179541717 --apply  # wallet asks the passphrase (irreversible tier)
+```
+
+- **Diff reports STRUCTURE first** — `4 columns inserted: now columns M:P, before what was column M`, `row moved: was row 40, now row 25 ("TOTAL")`, `header changed: F1 "Views" -> "Veiws"` — then cells as `E11 (was C10): old -> new <formula replaced by a typed value | formula cleared | formula added | now an error>`. Columns align on row-1 headers, rows on column A.
+- **Attribution is labelled, never asserted**: `certain` (one editor in the window), `mixed` (several: it cannot say who did what), `inferred` (no Activity), `unknown` (Activity records nobody; it lags by minutes). Anonymous anyone-with-the-link editors are counted. Activity identifies people by a Google person id that cannot be resolved to an email through any API the wallet fronts, so most people show as `person <id>`; the reading account and time-matched savers are named.
+- **Earlier Drive versions cannot be read yet**: the wallet does not front `docs.google.com/spreadsheets/export?...&revision=N` as a read (it calls it irreversible). `--from #2` is refused with that message. Use `snapshot` going forward, or Version history → Make a copy → `--from sheet:<copy id>`.
+- **protect is a dry run until `--apply`**, is read back (`VERIFIED`), and is idempotent: the same command again prints `already protected exactly so; nothing to do`. The caller (`-e`, required) and the file owners are always editors.
+
 ## Output Contract
 
 - **stdout**: command data only — cell values, sheet list, or a single `SUCCESS:` line.
@@ -501,6 +520,7 @@ which validates and de-dupes the XML. You can still edit it by hand:
   `write`/`update`/`append` (write real date/time values, not literal strings); `insertrow`; `read --rich`
   (value+formula+note+color+numberFormat per cell); `describeschema` (rich per-sheet schema export —
   headers+notes, diversified data sampling — ported from a separate reference tool's design). See `prp/`.
+- **PRP-09 (this project)**: `history` (Drive saved versions + Drive Activity attribution per span), `snapshot` + `diff` (structure-first: rows/columns inserted, deleted, moved, headers changed; then cells with formula-lost and new-error flags; then who), `protect` (protected ranges / tabs with unprotected exceptions, dry run, idempotent). Reading an earlier Drive revision is blocked on a wallet rule. See `prp/`.
 - Foundational: encrypted OAuth token storage; per-service uskoag-gservices sub-projects.
 
 ## License

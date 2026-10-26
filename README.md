@@ -13,6 +13,7 @@ This is a multi-module Maven project with the following artifacts:
 | **uskoag-gservices-drive** | Google Drive API service | `io.github.uskoag:uskoag-gservices-drive:1.0` |
 | **uskoag-gservices-docs** | Google Docs API service | `io.github.uskoag:uskoag-gservices-docs:1.0` |
 | **uskoag-gservices-slides** | Google Slides API service | `io.github.uskoag:uskoag-gservices-slides:1.0` |
+| **uskoag-gservices-comments** | What the Docs and Slides CLIs share for comments: AI signature, owner/AI identity, comment posts | `io.github.uskoag:uskoag-gservices-comments:1.0` |
 | **uskoag-gservices-youtube** | YouTube Data API v3 service | `io.github.uskoag:uskoag-gservices-youtube:1.0` |
 | **uskoag-gservices-gmail** | Gmail API service | `io.github.uskoag:uskoag-gservices-gmail:1.0` |
 

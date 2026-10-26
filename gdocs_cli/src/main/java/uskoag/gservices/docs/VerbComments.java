@@ -1,5 +1,8 @@
 package uskoag.gservices.docs;
 
+import uskoag.gservices.comments.Post;
+import uskoag.gservices.comments.Identity;
+import uskoag.gservices.comments.AiSign;
 import com.google.api.services.docs.v1.model.*;
 import java.util.*;
 import java.util.List;
@@ -166,7 +169,7 @@ final class VerbComments {
         Out.success(reqs.size() + " request(s) applied" + (made.isEmpty() ? "" : "; created " + String.join(", ", made)));
     }
 
-    record Hit(DocThread thread, DocThread.Post post) {}
+    record Hit(DocThread thread, Post post) {}
 
     private static Hit postIn(List<DocThread> threads, String postId) {
         for (var t : threads) { var p = t.post(postId); if (p != null) return new Hit(t, p); }
@@ -174,7 +177,7 @@ final class VerbComments {
         return null;
     }
 
-    private static void refuseUneditable(DocThread t, DocThread.Post p) {
+    private static void refuseUneditable(DocThread t, Post p) {
         if (!p.me()) Out.die("post " + p.postId() + " was written by " + p.author() + "; Google lets only its author edit it");
         if (p.head() && !t.isComment()) Out.die("post " + p.postId() + " is the first post of a suggestion thread, which Google does not let anyone edit");
     }

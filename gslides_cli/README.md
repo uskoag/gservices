@@ -68,6 +68,8 @@ The same three-level shape will recur in a Docs CLI and in rich cell text for sh
 
 **Templating** — `fill`
 
+**Comments** — `comments`, `comment add|reply|resolve|reopen|edit|delete|unsign`, `identity` (Slides has no suggested edits; see CLAUDE_CODE_USAGE.md)
+
 **Admin** — `grant`, `revoke`, `listperms`, `reauth`, `help`
 
 `uskoag-gslides help` is the reference; it lives in `src/main/resources/gslides-help.txt`.

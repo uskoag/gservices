@@ -106,6 +106,30 @@ uskoag-gslides fill $DECK --map values.json
 
 Whole-deck `replaceAllText` in one call. It prints per-key occurrence counts and an `[ERROR]` line for any key that matched nothing, so a silent no-op is visible.
 
+## Comments
+
+Google Slides has **comments only**. It has no suggested edits, in the editor or in the API, so `suggestions` / `accept` / `reject` exit with a message saying so. To propose a change, post it as a comment on the text it concerns.
+
+```bash
+uskoag-gslides comments $DECK --awaiting                         # the to-do list: open, a human spoke last
+uskoag-gslides comment add $DECK --on body_7 --find "2019" --text "should this be 2024?" --apply
+uskoag-gslides comment add $DECK --on body_7@0:12 --text "..." --apply     # an explicit range
+uskoag-gslides comment add $DECK --on body_7 --text "..." --apply          # the whole element
+uskoag-gslides comment add $DECK --slide 4 --text "..." --apply            # the slide itself
+uskoag-gslides comment add $DECK --on table_1 --cell 2,3 --text "..." --apply   # one table cell (1-based)
+uskoag-gslides comment reply $DECK <threadId> --text "Done." --resolve --apply
+```
+
+It uses the same verbs and rules as `uskoag-gdocscli`, and the shared code lives in the `comments` module:
+
+- **Every write is a dry run until `--apply`.** A comment notifies people, so the default is to show what would be posted. The global `--dry-run` also forces a dry run.
+- **Every post is signed `AI(<name>): `.** Always pass `--ai-name <your model>`. Use `--no-ai-sign` only when the user asks.
+- A resolve, reopen or assignment goes as a **bare post after the text reply**. Google never deletes a post that carries an action, so no words get stuck in the thread.
+- edit / delete / unsign work only on posts this account wrote. Google refuses to edit a bare action post, and the tool says so before sending anything.
+- `identity` shows the owner and AI accounts, read from the same `identity.json` that `uskoag-gdocscli identity set` writes. With both set, `-e` defaults to the AI account and posts are labelled `[owner]` / `[AI, serving …]`.
+- Threads are placed by slide number and element id, and the element id is the same one `describe` shows. A range shows as `@S:E`, which is the same grammar `style` and `runs` use.
+- Comments are a Google **Developer Preview**. A refusal that names `commentsViewMode` or `insertComment` means the Cloud project is not enrolled.
+
 ## Batch and dry-run
 
 Every mutating verb sends one `batchUpdate`, so a multi-op `text` call is one round trip. `--dry-run` prints the requests it would send and sends nothing.

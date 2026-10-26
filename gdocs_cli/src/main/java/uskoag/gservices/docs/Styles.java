@@ -16,7 +16,8 @@ public final class Styles {
         if (s == null || s.getLink() == null) return null;
         var l = s.getLink();
         if (l.getUrl() != null) return l.getUrl();
-        if (l.getHeadingId() != null) return "#" + l.getHeadingId();
+        if (l.getHeading() != null) return "#heading=" + l.getHeading().getId();
+        if (l.getHeadingId() != null) return "#heading=" + l.getHeadingId();
         if (l.getBookmarkId() != null) return "#" + l.getBookmarkId();
         return l.getTabId() != null ? "#tab=" + l.getTabId() : null;
     }

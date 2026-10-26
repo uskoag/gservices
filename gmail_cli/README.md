@@ -12,7 +12,9 @@ Part of the `uskoag-gservices` project; reuses the encrypted-OAuth token store f
 - ✅ **Batch** many ids/queries in one process under a single auth (`read-batch`, `thread-batch`, `search-batch`) via `gmail.batch()`
 - ✅ **`--strip-quotes`** — drop quoted reply history from a body, so re-reading a thread doesn't re-read every prior message's text at each level (a token-saver for AI consumers)
 - ✅ **Labels** — list, **create / rename / recolor / delete**, and **add/remove** on messages or whole threads (batched)
-- ✅ **Draft** creation (plain or HTML, attachments, replies) — **never sends**
+- ✅ **Draft** creation and **in-place update** (plain or HTML, attachments, replies) — **never sends**
+- ✅ **Threaded review notes** — `>>`/`>> AI:` lines in a draft body are colored, same convention as
+  GLOBAL_CLAUDE.md's file-based inline review
 - ✅ **Download attachments** to disk
 - ✅ **Encrypted OAuth tokens** (AES-256-GCM) keyed by a user-supplied **app-key**
 - ✅ **Clean output** — results to stdout, logs to stderr; `--json` for machine parsing
@@ -97,6 +99,7 @@ uskoag-gmailcli <command> [args] --email <you@gmail.com> [--app-key <key>] [--js
 | `drafts` | List existing drafts |
 | `draft-read <draftId>` | Read one draft |
 | `draft` | **Create** a draft (never sends) |
+| `draft-update <draftId>` | **Replace** an existing draft's content in place — same flags as `draft`, but the `draftId` stays the same, so nothing that recorded it goes stale |
 | `draft-delete <draftId…>` | Delete draft(s). **Labelling a draft's message `TRASH` does NOT remove it** — the draft record survives and keeps listing, so use this |
 | `attachment <messageId> <attachmentId>` | Download an attachment to disk |
 
@@ -170,11 +173,18 @@ anywhere a body is emitted. It only affects the `body` field; headers, snippet, 
   passes through unchanged; interleaved or bottom-posted replies may lose some new content past the cut
   point, which is the accepted trade-off for the token savings.
 
-### `draft` flags
+### `draft` / `draft-update` flags
+
+`draft-update <draftId>` takes exactly the same flags as `draft` and replaces the draft's content —
+same `draftId`, so nothing that recorded it (a local file, a review thread) goes stale, and there's no
+`draft-delete` + `draft` round trip (which also used to route through the wallet's irreversible-tier
+delete approval for a mere edit). It preserves the draft's existing thread association unless `--thread`
+or `--reply-to` overrides it — Gmail's API requires threadId to be resupplied on every update, or the
+draft silently detaches from its thread.
 
 | Flag | Meaning |
 |---|---|
-| `--to <a,b>` | Recipients (comma/semicolon separated) — required unless `--reply-to` supplies it |
+| `--to <a,b>` | Recipients (comma/semicolon separated) — required unless `--reply-to` supplies it, or `--no-to` is given |
 | `--cc <…>` / `--bcc <…>` | Carbon-copy / blind recipients |
 | `--subject`, `-s <text>` | Subject |
 | `--body`, `-b "<text>"` | Inline body |
@@ -185,6 +195,26 @@ anywhere a body is emitted. It only affects the `body` field; headers, snippet, 
 | `--inline <img>` | Embed an image **inside** the HTML body, referenced `cid:<filename>` (repeatable) — see below |
 | `--reply-to <messageId>` | Make it a reply: inherits thread, recipient, `Re:` subject, and `In-Reply-To`/`References` |
 | `--thread <threadId>` | Attach the draft to a specific thread |
+| `--no-to`, `--placeholder-to` | Hold a draft with genuinely **no recipient** (no To/Cc/Bcc at all) instead of erroring or self-addressing. Gmail saves such a draft but refuses to Send it without a real recipient, so it's a safe way to hold one mid-review — see below |
+
+### Placeholder / no-recipient drafts — `--no-to`
+
+Reviewing a draft live in Gmail's own compose window sometimes means holding it with **nobody able to
+accidentally send it** while it's mid-review. The old way was to self-address it (`--to` your own
+account) — harmless, but a workaround, and easy to forget to swap back before really sending. `--no-to`
+(alias `--placeholder-to`) creates or updates a draft with no `To`/`Cc`/`Bcc` header at all; Gmail holds
+it fine but refuses **Send** until a human fills in a real recipient in the compose window. Self-addressing
+still works exactly as it did — this is an additional option, not a replacement for it.
+
+### Threaded review notes in a draft body — `>>` / `>> AI:`
+
+Extends GLOBAL_CLAUDE.md's inline-review convention for files to mail bodies: a line opening `>>` is
+the human reviewer's own note, one opening `>> AI:` is Claude's reply to it. On a **plain-text** body
+(auto-converted to HTML), `draft`/`draft-update` highlight these automatically as colored **chips** —
+text color plus a light background tint, not just colored text — `>>` lines in blue, `>> AI:` lines in
+green and indented, so a reader can skip past the notes straight to the letter, or jump between them, at
+a glance. An indented line right after either is treated as its continuation and keeps the same chip. A
+body supplied with `--html` is the caller's own markup and is left untouched.
 
 ### Inline images in an HTML body — `--inline`
 
@@ -217,25 +247,43 @@ uskoag-gmailcli draft -e you@gmail.com --to them@x.com -s "Comparison" \
 </table>
 ```
 
-**The MIME it builds**, which is the only shape Gmail will render:
+**The MIME it builds when `--inline` is used ALONE** (no `--attach`) — the only shape Gmail will render:
 
 ```
-multipart/mixed                      (only when --attach is also given)
-├── multipart/related                (Content-Type restated on the wrapper part — see below)
-│   ├── text/html                    the body, first part
-│   ├── image/jpeg   Content-ID: <before.jpg>   Content-Disposition: inline
-│   └── image/jpeg   Content-ID: <after.jpg>    Content-Disposition: inline
-└── application/pdf  Content-Disposition: attachment
+multipart/related
+├── text/html                    the body, first part
+├── image/jpeg   Content-ID: <before.jpg>   Content-Disposition: inline
+└── image/jpeg   Content-ID: <after.jpg>    Content-Disposition: inline
 ```
 
-**Four things Gmail requires. Miss any one and it silently renders nothing:**
+**Four things Gmail requires here. Miss any one and it silently renders nothing:**
 
 1. `Content-ID` wrapped in angle brackets — `<before.jpg>`, not `before.jpg`.
 2. `Content-Disposition: inline`, not `attachment`.
 3. Each image part declaring its own `Content-Type: <mime>; name="<file>"`.
-4. **When `multipart/related` is nested inside `multipart/mixed`, the wrapper body part must restate
-   `Content-Type: multipart/related`.** This is the one that is easy to miss and produces no error —
-   just a message with no pictures in it.
+4. The image part(s) must be siblings of the html part inside `multipart/related`, not nested deeper.
+
+**When `--attach` is also given, the shape is different — see below.** (An earlier version of this tool
+nested `multipart/related` inside `multipart/mixed` for that combination, matching the rule above; that
+recipe turned out to be unreliable — see the next section.)
+
+**A separate, Gmail-side trap, now fixed:** `--inline` combined with `--attach` used to be broken —
+merely opening the draft in Gmail's own compose window and saving it (Send not even required) dropped the
+inline image and mislabeled the other attachment, in every MIME shape tried (see
+`prp/08-prp-inline-image-dropped-on-send-with-attachments.md` for the full investigation, including
+what didn't work). This is a known, long-standing Gmail platform quirk, not something specific to this
+tool — a *draft* message's inline `<img>` tag carries an internal `data-surl="cid:..."` marker that a
+genuinely *sent* message's does not, and reconciling that draft-only state is exactly where it broke; see
+`googleworkspace/solutions#163` on GitHub (open since 2021, closed in 2025 only because the repo was
+archived — never actually fixed) for an independent diagnosis of the same mechanism.
+
+**The fix:** when both `--inline` and `--attach` are given, the image is embedded as a `data:` URI
+directly in the html instead of a separate `cid:`-referenced MIME part. Gmail's own send pipeline
+converts a `data:` URI into a proper native attachment on the way out (verified byte-identical against
+the source file), and its compose-window JS treats a `data:` URI exactly like a freshly pasted image —
+sidestepping the whole broken code path. Verified surviving both a direct API send and a human
+opening/editing/saving the draft in Gmail's compose window. `--inline` used alone is unaffected by any of
+this and keeps the original `cid:`+separate-part recipe.
 
 All four are handled for you. The reference implementation this follows is
 `GmailDocxSender.createEmail_gmailVersion` in `uskoag-reports/bulk_email_sender`; read that before changing

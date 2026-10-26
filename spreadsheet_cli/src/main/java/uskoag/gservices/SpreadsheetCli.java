@@ -19,6 +19,7 @@ import com.google.api.services.sheets.v4.model.GridData;
 import com.google.api.services.sheets.v4.model.GridProperties;
 import com.google.api.services.sheets.v4.model.GridRange;
 import com.google.api.services.sheets.v4.model.InsertDimensionRequest;
+import com.google.api.services.sheets.v4.model.MoveDimensionRequest;
 import com.google.api.services.sheets.v4.model.Request;
 import com.google.api.services.sheets.v4.model.RowData;
 import com.google.api.services.sheets.v4.model.Sheet;
@@ -151,6 +152,10 @@ public class SpreadsheetCli {
                 return;
             }
 
+            if (uskoag.gservices.sheetcli.Verbs.NAMES.contains(command)) {
+                System.exit(uskoag.gservices.sheetcli.Verbs.run(command, argList, email, verbose, quiet));
+            }
+
             initializeSheetsService();
 
             switch (command) {
@@ -238,6 +243,10 @@ public class SpreadsheetCli {
                     if (argList.size() < 3) { logError("deletecolumn: requires <spreadsheetId> <sheetName> <colLetter>"); System.exit(1); }
                     handleDeleteColumn(argList.remove(0), argList.remove(0), argList.remove(0), argList);
                 }
+                case "movecolumn" -> {
+                    if (argList.size() < 3) { logError("movecolumn: requires <spreadsheetId> <sheetName> <colLetter> --before <colLetter>"); System.exit(1); }
+                    handleMoveColumn(argList.remove(0), argList.remove(0), argList.remove(0), argList);
+                }
                 case "format" -> {
                     if (argList.size() < 3) { logError("format: requires <spreadsheetId> <sheetName> <range>"); System.exit(1); }
                     handleFormat(argList.remove(0), argList.remove(0), argList.remove(0), argList);
@@ -249,6 +258,10 @@ public class SpreadsheetCli {
                 case "validate" -> {
                     if (argList.size() < 3) { logError("validate: requires <spreadsheetId> <sheetName> <range>"); System.exit(1); }
                     handleValidate(argList.remove(0), argList.remove(0), argList.remove(0), argList);
+                }
+                case "note" -> {
+                    if (argList.size() < 3) { logError("note: requires <spreadsheetId> <sheetName> <startAddr> and --json/--json-file/--tsv-file"); System.exit(1); }
+                    handleNote(argList.remove(0), argList.remove(0), argList.remove(0), argList);
                 }
                 case "highlight" -> {
                     if (argList.size() < 3) { logError("highlight: requires <spreadsheetId> <sheetName> <range>"); System.exit(1); }
@@ -272,7 +285,7 @@ public class SpreadsheetCli {
                 }
                 default -> {
                     logError("Unknown command: " + command);
-                    logError("Valid: read inspect query update write append clear listsheet createsheet renamesheet freeze insertcolumn insertrow deletecolumn format numberformat validate highlight filter describeschema grant revoke listperms help");
+                    logError("Valid: read inspect query update write append clear listsheet createsheet renamesheet freeze insertcolumn insertrow deletecolumn movecolumn format numberformat validate note highlight filter describeschema history snapshot diff protect grant revoke listperms help");
                     logError("Run 'uskoag-gsheetscli --help' for usage.");
                     System.exit(1);
                 }
@@ -1271,6 +1284,36 @@ public class SpreadsheetCli {
         }
     }
 
+    // moveDimension carries everything with the column: values, formulas, notes, formats, validation
+    // (tick boxes) and protected ranges. Formulas elsewhere that point into the moved block follow it.
+    private static void handleMoveColumn(String spreadsheetId, String sheetName, String colLetter, List<String> argList) throws IOException {
+        var countStr = extractFlagValue(argList, "--count");
+        var before = extractFlagValue(argList, "--before");
+        var count = countStr != null ? Integer.parseInt(countStr) : 1;
+        if (before == null) { logError("movecolumn: requires --before <colLetter> (where the block lands, as the sheet is laid out NOW)"); System.exit(1); }
+
+        var spreadsheet = sheetsService.spreadsheets().get(spreadsheetId).execute();
+        var sheetId = CellRange.sheetIdByName(spreadsheet, sheetName);
+        if (sheetId == null) { logError("Sheet '" + sheetName + "' not found"); System.exit(1); return; }
+
+        var startIndex = CellRange.letterToCol(colLetter) - 1;
+        var destIndex = CellRange.letterToCol(before) - 1;
+        if (destIndex >= startIndex && destIndex <= startIndex + count) {
+            if (!quiet) System.out.println("SUCCESS: nothing to move (" + colLetter + " already sits before " + before + ")");
+            return;
+        }
+        var dimRange = new DimensionRange().setSheetId(sheetId).setDimension("COLUMNS")
+            .setStartIndex(startIndex).setEndIndex(startIndex + count);
+        var req = new BatchUpdateSpreadsheetRequest().setRequests(List.of(new Request().setMoveDimension(
+            new MoveDimensionRequest().setSource(dimRange).setDestinationIndex(destIndex))));
+        sheetsService.spreadsheets().batchUpdate(spreadsheetId, req).execute();
+
+        if (!quiet) {
+            System.out.println("SUCCESS: moved " + count + " column(s) from " + sheetName + "!" + colLetter
+                + " to just before what was column " + before);
+        }
+    }
+
     private static void handleInsertRow(String spreadsheetId, String sheetName, String rowNumStr, List<String> argList) throws IOException {
         String countStr = extractFlagValue(argList, "--count");
         int count = countStr != null ? Integer.parseInt(countStr) : 1;
@@ -1393,6 +1436,34 @@ public class SpreadsheetCli {
      * --color-legend, the legend range itself — one command that stays in sync when the allowed
      * set changes (re-run it; highlight refreshes rather than stacking duplicates).
      */
+    /** Hover notes only: the block's top-left lands on <startAddr>; values and formatting are not touched. */
+    private static void handleNote(String spreadsheetId, String sheetName, String startAddr, List<String> argList) throws IOException {
+        var json = extractFlagValue(argList, "--json");
+        var jsonFile = extractFlagValue(argList, "--json-file");
+        var tsvFile = extractFlagValue(argList, "--tsv-file");
+        List<List<String>> notes;
+        if (json == null && jsonFile != null) json = Files.readString(Paths.get(jsonFile), StandardCharsets.UTF_8);
+        if (json != null) {
+            List<Object> raw = GSON.fromJson(json, new TypeToken<List<Object>>(){}.getType());
+            notes = !raw.isEmpty() && raw.get(0) instanceof List
+                ? raw.stream().map(o -> ((List<?>) o).stream().map(String::valueOf).toList()).toList()
+                : List.of(raw.stream().map(String::valueOf).toList());
+        } else if (tsvFile != null) {
+            notes = Files.readAllLines(Paths.get(tsvFile), StandardCharsets.UTF_8).stream().map(l -> List.of(l.split("\t", -1))).toList();
+        } else {
+            logError("note: requires --json '[...]' (one row) / '[[...],[...]]' (2-D), --json-file or --tsv-file");
+            System.exit(1);
+            return;
+        }
+        var spreadsheet = sheetsService.spreadsheets().get(spreadsheetId).execute();
+        var sheetId = CellRange.sheetIdByName(spreadsheet, sheetName);
+        if (sheetId == null) { logError("Sheet '" + sheetName + "' not found"); System.exit(1); return; }
+        var b = CellRange.bounds(startAddr);
+        sheetsService.spreadsheets().batchUpdate(spreadsheetId, new BatchUpdateSpreadsheetRequest()
+            .setRequests(List.of(CellNote.buildRequest(sheetId, b[1], b[0], notes)))).execute();
+        if (!quiet) System.out.println("SUCCESS: set " + notes.stream().mapToInt(List::size).sum() + " note(s) from " + sheetName + "!" + startAddr);
+    }
+
     private static void handleValidate(String spreadsheetId, String sheetName, String range, List<String> argList) throws IOException {
         boolean clear = removeFlag(argList, "--clear");
         String fromRange = extractFlagValue(argList, "--from-range");
@@ -1402,9 +1473,10 @@ public class SpreadsheetCli {
         removeFlag(argList, "--strict"); // strict is the default; explicit flag is a no-op
         String colorsArg = extractFlagValue(argList, "--colors");
         boolean colorLegend = removeFlag(argList, "--color-legend");
+        boolean checkbox = removeFlag(argList, "--checkbox");
 
-        if (!clear && fromRange == null && list == null && perRowFormula == null) {
-            logError("validate: requires --from-range <RangeRef>, --list a,b,c, or --per-row-formula <template> (or --clear)");
+        if (!clear && !checkbox && fromRange == null && list == null && perRowFormula == null) {
+            logError("validate: requires --checkbox, --from-range <RangeRef>, --list a,b,c, or --per-row-formula <template> (or --clear)");
             System.exit(1);
         }
         if ((fromRange != null ? 1 : 0) + (list != null ? 1 : 0) + (perRowFormula != null ? 1 : 0) > 1) {
@@ -1454,6 +1526,7 @@ public class SpreadsheetCli {
             var gridRange = CellRange.toGridRange(sheetId, range);
             requests.add(clear
                 ? CellValidation.buildClearRequest(gridRange)
+                : checkbox ? CellValidation.buildCheckboxRequest(gridRange)
                 : CellValidation.buildSetRequest(gridRange, fromRange, list, !warn));
 
             boolean wantColor = !clear && (colorsArg != null || colorLegend);
@@ -2036,15 +2109,24 @@ public class SpreadsheetCli {
         out.println("  insertcolumn <id> <sheet> <colLetter>         Insert blank column(s) at colLetter, shifting everything at/after it right (--count N, default 1)");
         out.println("  insertrow <id> <sheet> <rowNumber>            Insert blank row(s) at rowNumber, shifting everything at/after it down (--count N, default 1)");
         out.println("  deletecolumn <id> <sheet> <colLetter>         Delete column(s) at colLetter, shifting everything after it left (--count N, default 1)");
+        out.println("  movecolumn <id> <sheet> <colLetter> --before <colLetter>  Move column(s) with their notes, formats, tick boxes and formulas (--count N); --before is read as the sheet is laid out NOW");
         out.println("  format  <id> <sheet> <range>                  Color/style cells (bg, text color, bold, italic, align, wrap)");
         out.println("  numberformat <id> <sheet> <range>             Set the number/date rendering format (--type + optional --pattern, or --clear)");
-        out.println("  validate <id> <sheet> <range>                 Dropdown / data validation (from a range or an inline list)");
+        out.println("  validate <id> <sheet> <range>                 Dropdown / data validation (from a range or an inline list); --checkbox makes tick boxes (TRUE/FALSE)");
+        out.println("  note    <id> <sheet> <addr>                   Set hover notes (--json '[\"a\",\"b\"]' one row, or [[..],[..]]; --json-file; --tsv-file); values untouched");
         out.println("  highlight <id> <sheet> <range>                Color-code each allowed value (conditional format, one rule per value)");
         out.println("  filter  <id> <sheet> [<range>]                Turn on the filter funnel buttons (--clear to remove; range optional -> whole sheet)");
         out.println("  describeschema <id>                           Export a rich per-sheet schema (headers, notes, diversified data samples)");
+        out.println("  history <id>                                  Saved versions with who and when (--who: who edited each span)");
+        out.println("  snapshot <id>                                 Save every tab's values+formulas locally, to diff against later");
+        out.println("  diff    <id>                                  What changed: structure first, then cells, then who (see below)");
+        out.println("  protect <id> <tab> [<range>]                  Lock a range or tab (--list, --remove; dry run unless --apply)");
         out.println("  grant | revoke | listperms                    MOVED - see PERMISSIONS below");
         out.println("  help                                          Show this help");
         out.println();
+        try (var in = SpreadsheetCli.class.getResourceAsStream("/sheetcli-history-help.txt")) {
+            if (in != null) out.println(new String(in.readAllBytes(), StandardCharsets.UTF_8));
+        } catch (IOException ignored) {}
         out.println("GLOBAL OPTIONS");
         out.println("  -v, --verbose   Log progress to stderr ([INFO] lines, full stack traces on error)");
         out.println("  --quiet         Suppress the 'SUCCESS:' line (exit code still signals success)");

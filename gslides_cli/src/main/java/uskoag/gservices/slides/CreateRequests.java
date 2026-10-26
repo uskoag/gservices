@@ -76,8 +76,8 @@ public final class CreateRequests {
         return new Request().setCreateImage(r);
     }
 
-    static Request video(String id, String pageId, Box b, String youtubeId) {
-        var r = new CreateVideoRequest().setSource("YOUTUBE").setId(youtubeId)
+    static Request video(String id, String pageId, Box b, String source, String videoId) {
+        var r = new CreateVideoRequest().setSource(source).setId(videoId)
                 .setElementProperties(Geom.props(pageId, b.x(), b.y(), b.w(), b.h()));
         if (id != null) r.setObjectId(id);
         return new Request().setCreateVideo(r);

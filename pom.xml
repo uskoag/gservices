@@ -19,6 +19,7 @@
         <module>drive</module>
         <module>docs</module>
         <module>slides</module>
+        <module>comments</module>
         <module>youtube</module>
         <module>gmail</module>
         <module>calendar</module>
@@ -26,6 +27,7 @@
         <module>gmail_cli</module>
         <module>gslides_cli</module>
         <module>gdocs_cli</module>
+        <module>gdocs_monitor</module>
         <module>gsheetsdb</module>
         <module>gcalendar_cli</module>
     </modules>
@@ -48,7 +50,7 @@
         <google.oauth.client.jetty.ver>1.34.1</google.oauth.client.jetty.ver>
         <google.sheets.ver>v4-rev20240826-2.0.0</google.sheets.ver>
         <google.drive.ver>v3-rev20240914-2.0.0</google.drive.ver>
-        <google.docs.ver>v1-rev20251110-2.0.0</google.docs.ver>
+        <google.docs.ver>v1-rev20260427-2.0.0</google.docs.ver>
         <google.slides.ver>v1-rev20250401-2.0.0</google.slides.ver>
         <google.youtube.ver>v3-rev20250714-2.0.0</google.youtube.ver>
         <google.gmail.ver>v1-rev20251201-2.0.0</google.gmail.ver>

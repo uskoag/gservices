@@ -4,6 +4,7 @@ import com.google.api.client.googleapis.json.GoogleJsonResponseException;
 import com.google.api.services.docs.v1.model.*;
 import java.util.*;
 import java.util.List;
+import uskoag.gservices.comments.Wire;
 
 /**
  * The Docs API's comments and suggestions (Developer Preview since 2026-07-07). The Java client has no
@@ -23,19 +24,13 @@ final class Preview {
         catch (GoogleJsonResponseException e) { throw explain(e); }
     }
 
-    @SuppressWarnings("unchecked")
-    static List<Map<String, Object>> list(Object o) {
-        return o instanceof List<?> l ? (List<Map<String, Object>>) l : List.of();
-    }
+    static List<Map<String, Object>> list(Object o) { return Wire.list(o); }
 
-    @SuppressWarnings("unchecked")
-    static Map<String, Object> map(Object o) {
-        return o instanceof Map<?, ?> m ? (Map<String, Object>) m : Map.of();
-    }
+    static Map<String, Object> map(Object o) { return Wire.map(o); }
 
-    static String str(Map<String, Object> m, String k) { return m.get(k) == null ? null : m.get(k).toString(); }
+    static String str(Map<String, Object> m, String k) { return Wire.str(m, k); }
 
-    static boolean yes(Map<String, Object> m, String k) { return Boolean.TRUE.equals(m.get(k)); }
+    static boolean yes(Map<String, Object> m, String k) { return Wire.yes(m, k); }
 
     static List<Map<String, Object>> comments(Document d) { return list(d.get("comments")); }
 

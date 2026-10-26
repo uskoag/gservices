@@ -26,6 +26,25 @@ public final class Tabs {
 
     static int depth(Tab t) { return Objects.requireNonNullElse(t.getTabProperties().getNestingLevel(), 0); }
 
+    static String parentId(Tab t) {
+        var p = t.getTabProperties().getParentTabId();
+        return p == null || p.isEmpty() ? null : p;
+    }
+
+    /** Zero-based among the tabs sharing its parent: the flattening keeps sibling order, so counting earlier siblings is enough. */
+    static int siblingIndex(Tab t, List<Tab> all) {
+        var n = 0;
+        for (var x : all) {
+            if (x == t) return n;
+            if (Objects.equals(parentId(x), parentId(t))) n++;
+        }
+        return -1;
+    }
+
+    static int siblingCount(String parentId, List<Tab> all) {
+        return (int) all.stream().filter(x -> Objects.equals(parentId(x), parentId)).count();
+    }
+
     /** "Parent / Child / Grandchild", so a tab titled "Notes" under two parents stays distinguishable. */
     static String path(Tab t, List<Tab> all) {
         var byId = new HashMap<String, Tab>();

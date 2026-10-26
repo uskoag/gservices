@@ -3,6 +3,7 @@ package uskoag.gservices.docs;
 import com.google.api.services.docs.v1.model.*;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 
 /**
  * A replace, two ways. When the text occurs once in the whole tab, replaceAllText scoped to that tab:
@@ -12,12 +13,17 @@ import java.util.List;
  */
 final class BuildReplace {
 
+    private static final Pattern MARKUP = Pattern.compile("\\*\\*|(?<![\\w*])\\*[^*\\s][^*]*\\*(?![\\w*])|\\[[^\\]]+]\\([^)]+\\)");
+
     private BuildReplace() {}
 
     static Planned build(int order, Edit.Replace r, Scope s, boolean insertsCollide) {
         if (r.find() == null || r.find().isEmpty()) Out.die(r.label() + ": --find is required");
         if (r.with() == null) Out.die(r.label() + ": --with is required");
-        var within = r.in() == null ? null : s.anchor(r.label() + " --in", r.in());
+        if (!r.literal() && MARKUP.matcher(r.with()).find())
+            Out.die(r.label() + ": --with is plain text and would write its markdown markers (** * [text](url)) into the document as they stand. "
+                    + "Use insert for styled text, or pass --literal (plan: \"literal\": true) to write the characters as given");
+        var within = r.in() == null ? null : s.anchor(r.label() + " --in", r.in(), r.inOcc());
         var hits = s.occurrences(r.find(), within);
         var where = within == null ? "tab " + s.name() : "paragraph \"" + within.preview() + "\"";
         if (hits.isEmpty()) Out.die(r.label() + ": \"" + r.find() + "\" does not occur in " + where);

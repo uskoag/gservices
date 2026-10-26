@@ -1,7 +1,7 @@
 uskoag-gslides - Google Slides from the command line
 
 USAGE
-  uskoag-gslides [-v] [--quiet] [--dry-run] [-e EMAIL] [-k APPKEY] <command> [args...]
+  uskoag-gslides [-v] [--quiet] [--dry-run] [-e EMAIL] <command> [args...]
 
 ADDRESSING
   <deck>     presentation id, or any Slides URL it can be pulled out of
@@ -43,7 +43,7 @@ CREATE ELEMENTS  (--id NAME is what makes an element addressable and re-runnable
                                    [--no-outline] [--html H | --text T]
   create image <deck> <page> --id NAME --src <localPath|url> --at X,Y --size W,H
                                    or --cover [--aspect A] for full-bleed
-  create video <deck> <page> --id NAME --youtube VIDEO_ID --at X,Y --size W,H
+  create video <deck> <page> --id NAME (--youtube VIDEO_ID | --drive FILE_ID) --at X,Y --size W,H
   create line  <deck> <page> --id NAME --at X,Y --size W,H
   delete <deck> <elem>
   geom <deck> <elem>               [--at X,Y] [--size W,H] [--z front|back|forward|backward]
@@ -87,6 +87,41 @@ TEMPLATING
   fill <deck> KEY=VALUE [KEY=VALUE ...]   Whole-deck replaceAllText; reports per-key
   fill <deck> --map file.json             occurrence counts. [--ignore-case]
 
+COMMENTS  (Google Slides has comments only: no suggested edits, in the editor or the API)
+  comments <deck> [--slide N] [--status open|resolved|all] [--awaiting] [--mine] [--json]
+      Threads with their place (slide, element id as `describe` shows it, @S:E text range
+      or table cell), the quoted text, and every post with its postId and author.
+      [AWAITING] = open, and the last post with text is not the AI's: a human spoke and
+      nobody has answered. `comments <deck> --awaiting` is the to-do list.
+
+  comment add <deck> --on <elem>[@S:E] [--find "<text in it>"] [--cell R,C] --text "..." [--assign <email>]
+  comment add <deck> --slide N --text "..."            (on the slide itself)
+      --on alone anchors the whole element; @S:E or --find (must occur once) a range of
+      its text. On a table: --on alone is the whole table, --cell R,C (1-based) one cell,
+      plus @S:E or --find for text inside that cell.
+  comment reply <deck> <threadId> --text "..." [--resolve] [--assign <email>]
+  comment resolve|reopen <deck> <threadId> [--text "..."]
+  comment edit <deck> <postId> --text "..."
+  comment delete <deck> <threadId|postId>
+  comment unsign <deck> <postId> | --all-mine
+      All are dry runs unless --apply. Text may come from --text-file <f>.
+      A resolve, reopen or assignment is sent as a BARE post after any text reply: Google
+      never deletes a post carrying an action, so no words are ever stuck in the thread.
+      edit/delete/unsign work only on posts this account wrote (Google's rule). A deleted
+      comment is NOT in version history. `unsign` strips the AI signature in place.
+
+  AI SIGNATURE: everything written into a comment or reply starts "AI(<name>): ".
+    --ai-name <name>   e.g. --ai-name Claude-Opus5.5 (else env UKAG_AI_NAME, else "Claude").
+                       An agent should always pass its own model name.
+    --no-ai-sign       write this command's posts unsigned (only when the user asks).
+
+  identity [show] [--json]   the OWNER and AI accounts, shared with uskoag-gdocscli (set
+      them there: uskoag-gdocscli identity set --owner <email> --ai <email>). With them
+      set, posts are marked [owner] / [AI, serving <owner>], and -e defaults to the AI.
+
+  Comments are a Google Developer Preview feature. A refusal naming commentsViewMode or
+  insertComment means the Cloud project is not enrolled, not that the command is wrong.
+
 ADMIN
   grant --read|--write <deck> [name]   Add a deck to the local allowlist
   revoke <deck>                        Remove it
@@ -113,8 +148,10 @@ GLOBAL FLAGS
   -v, --verbose    [INFO] lines to stderr
   --quiet          Suppress the SUCCESS: line (exit code still conveys it)
   --dry-run        Show the API requests without sending them
-  -e, --email      Google account (default: the first one configured)
-  -k, --key        OAuth app-key (default: uskoag-gslides-cli-key-2026)
+  -e, --email      Google account (default: the AI account from identity.json when one is
+                   set; otherwise required)
+  --ai-name NAME   name in the AI(...) signature on comments
+  --no-ai-sign     leave this command's comment posts unsigned
 
 OUTPUT CONTRACT
   stdout carries only the command's data, or one SUCCESS: line.

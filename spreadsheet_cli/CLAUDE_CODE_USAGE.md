@@ -37,6 +37,10 @@ uskoag-gsheetscli write SHEET_ID SheetName A1 --tsv-file data.tsv
 | `highlight <id> <sheet> <range> (--from-range R\|--list a,b,c\|--colors-from-range R)` | Color-code each allowed value (conditional format). `--colors`, `--clear`. |
 | `filter <id> <sheet> [<range>]` | Turn on the header-row filter funnel buttons; `--clear` removes. Range optional (→ whole sheet). |
 | `describeschema <id> [--sheets a,b,...]` | Export a rich per-sheet schema (headers+notes, diversified sample) for feeding a spreadsheet's shape to an AI agent. `--format json\|md\|text`. |
+| `history <id> [--who]` | Saved versions with who/when; `--who` adds who edited each span (Drive Activity, labelled certain/mixed/inferred/unknown). |
+| `snapshot <id> [--label x]` / `snapshot --list <id>` | Save every tab's values+formulas locally, to diff against later. |
+| `diff <id> [--from src] [--to src] [--sheet tab] [--formulas]` | What changed: structure (rows/cols inserted, deleted, moved; tabs; headers), then cells, then who. src = current / snapshot / file.json / sheet:<id>. |
+| `protect <id> <tab> [<range>]` / `--list` / `--remove` | Protected ranges / tabs, `--unprotected-ranges`, `--editors`, `--warning-only`. Dry run unless `--apply`; idempotent. |
 | `grant --read\|--write <id> [name]` | Add the spreadsheet to the local allowlist. |
 | `revoke <id>` | Remove it. |
 | `listperms` | Show the allowlist (no Google auth needed). |
@@ -324,6 +328,25 @@ distinct value in the uniqueness column, topped up randomly if there aren't enou
 values); `--truncate` caps long cell values (head+tail preserved around a truncation marker).
 `--header-row`/`--data-start-row`/`--col-start`/`--col-end` override per-sheet defaults, but only
 when `--sheets` names exactly one sheet. 3 API calls total regardless of sheet count.
+
+## History, diff, protect — who broke the sheet, what changed, and stopping it happening again
+
+```bash
+uskoag-gsheetscli -e ME history ID --who --since 2026-10-02     # saved versions + who edited each span (Drive Activity)
+uskoag-gsheetscli -e ME snapshot ID --label after-repair         # values+formulas of every tab, saved locally
+uskoag-gsheetscli -e ME diff ID                                  # newest snapshot -> now: structure, then cells, then who
+uskoag-gsheetscli -e ME diff ID --sheet "Platform Report" --formulas
+uskoag-gsheetscli -e ME diff ID --from sheet:COPY_ID --from-time "2026-10-02 04:11 EAT"   # against a copy of an old version
+uskoag-gsheetscli -e ME protect ID "Platform Report" --unprotected-ranges "B2:B40" --description "formulas" --apply
+uskoag-gsheetscli -e ME protect ID Tracker A1:Z1 --editors a@x,b@y --apply
+uskoag-gsheetscli -e ME protect --list ID --json
+uskoag-gsheetscli -e ME protect --remove ID 179541717 --apply  # wallet asks the passphrase (irreversible tier)
+```
+
+- **Diff reports STRUCTURE first** — `4 columns inserted: now columns M:P, before what was column M`, `row moved: was row 40, now row 25 ("TOTAL")`, `header changed: F1 "Views" -> "Veiws"` — then cells as `E11 (was C10): old -> new <formula replaced by a typed value | formula cleared | formula added | now an error>`. Columns align on row-1 headers, rows on column A.
+- **Attribution is labelled, never asserted**: `certain` (one editor in the window), `mixed` (several: it cannot say who did what), `inferred` (no Activity), `unknown` (Activity records nobody; it lags by minutes). Anonymous anyone-with-the-link editors are counted. Activity identifies people by a Google person id that cannot be resolved to an email through any API the wallet fronts, so most people show as `person <id>`; the reading account and time-matched savers are named.
+- **Earlier Drive versions cannot be read yet**: the wallet does not front `docs.google.com/spreadsheets/export?...&revision=N` as a read (it calls it irreversible). `--from #2` is refused with that message. Use `snapshot` going forward, or Version history → Make a copy → `--from sheet:<copy id>`.
+- **protect is a dry run until `--apply`**, is read back (`VERIFIED`), and is idempotent: the same command again prints `already protected exactly so; nothing to do`. The caller (`-e`, required) and the file owners are always editors.
 
 ## Errors
 

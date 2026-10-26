@@ -161,7 +161,11 @@ public class GmailCli {
             Map.entry("--threads", "threads"),
             Map.entry("--create-missing", "create-missing"),
             Map.entry("--hide", "hide"),
-            Map.entry("--show", "show")
+            Map.entry("--show", "show"),
+            // send-draft's own gate — deliberately not listed in printUsage()'s command table
+            Map.entry("--dangerously-allow-send", "dangerously-allow-send"),
+            // draft/draft-update: hold a draft with genuinely no recipient instead of self-addressing (prp/09)
+            Map.entry("--no-to", "no-to"), Map.entry("--placeholder-to", "no-to")
     );
 
     /** Value-flags that may repeat and accumulate (e.g. --attach a --attach b). */
@@ -260,10 +264,26 @@ public class GmailCli {
                     cmdDraftRead(a, pos.get(1));
                 }
                 case "draft" -> { connect(a); cmdDraft(a); }
+                case "draft-update" -> {
+                    requirePositional(pos, 1, "draft-update requires a <draftId>");
+                    connect(a);
+                    cmdDraftUpdate(a, pos.get(1));
+                }
                 case "draft-delete" -> {
                     requirePositional(pos, 1, "draft-delete requires one or more <draftId>");
                     connect(a);
                     cmdDraftDelete(pos.subList(1, pos.size()));
+                }
+                case "send-draft" -> {
+                    requirePositional(pos, 1, "send-draft requires a <draftId>");
+                    if (!a.has("dangerously-allow-send")) {
+                        logError("send-draft actually sends mail and is refused without --dangerously-allow-send.");
+                        logError("This tool is drafts-only by design; only pass that flag for a deliberate,");
+                        logError("reviewed, one-off send (e.g. testing prp/08's inline-image fix).");
+                        System.exit(2);
+                    }
+                    connect(a);
+                    cmdSendDraft(pos.get(1));
                 }
                 case "attachment" -> {
                     requirePositional(pos, 2, "attachment requires <messageId> <attachmentId>");
@@ -670,7 +690,8 @@ public class GmailCli {
                 System.out.println("Attachments:");
                 for (Map<String, Object> at : attachments)
                     System.out.println("  - " + at.get("filename") + " (" + at.get("mimeType")
-                            + ", " + at.get("size") + " bytes)  attachmentId=" + at.get("attachmentId"));
+                            + ", " + at.get("size") + " bytes" + (Boolean.TRUE.equals(at.get("inline")) ? ", inline" : "")
+                            + ")  attachmentId=" + at.get("attachmentId"));
             }
             if (!a.has("headers-only")) {
                 System.out.println();
@@ -759,6 +780,24 @@ public class GmailCli {
         System.out.println("SUCCESS: deleted " + draftIds.size() + " draft(s)");
     }
 
+    /**
+     * Sends an existing draft straight through the Gmail API ({@code drafts.send}), with no Gmail web/app
+     * UI ever touching it. Gated behind {@code --dangerously-allow-send} deliberately: this tool's whole
+     * design point is drafts-only, human-reviewed-before-send, and this verb is a one-off escape hatch —
+     * not a routine command — kept only because it is what confirmed the diagnosis in prp/08. Confirmed
+     * repeatedly, with both stub files and real images, that merely opening an API-created draft with both
+     * --inline and --attach in Gmail's own compose window and saving it (Send is not even required) drops
+     * the inline image and corrupts the surviving attachment's disposition; sending the identical draft
+     * through this verb instead preserves everything byte-for-byte. That is real evidence this verb is
+     * occasionally the right tool, not an argument for making it the default path.
+     */
+    private static void cmdSendDraft(String draftId) throws IOException {
+        Message sent = gmail.users().drafts().send(USER, new Draft().setId(draftId)).execute();
+        System.out.println("SUCCESS: sent draft " + draftId);
+        System.out.println("messageId: " + sent.getId());
+        System.out.println("threadId:  " + sent.getThreadId());
+    }
+
     private static void cmdDraftRead(Args a, String draftId) throws IOException {
         Draft d = gmail.users().drafts().get(USER, draftId).setFormat("full").execute();
         Message m = d.getMessage();
@@ -766,6 +805,8 @@ public class GmailCli {
         StringBuilder plain = new StringBuilder(), html = new StringBuilder();
         collectText(payload, plain, html);
         String body = plain.length() > 0 ? plain.toString() : html.toString();
+        List<Map<String, Object>> attachments = new ArrayList<>();
+        collectAttachments(payload, attachments);
 
         if (json) {
             Map<String, Object> out = new LinkedHashMap<>();
@@ -775,18 +816,54 @@ public class GmailCli {
             out.put("cc", header(payload, "Cc"));
             out.put("subject", header(payload, "Subject"));
             out.put("body", body);
+            out.put("attachments", attachments);
             emitJson(out);
         } else {
             System.out.println("draftId: " + d.getId());
             System.out.println("To:      " + nz(header(payload, "To")));
             if (header(payload, "Cc") != null) System.out.println("Cc:      " + header(payload, "Cc"));
             System.out.println("Subject: " + nz(header(payload, "Subject")));
+            if (!attachments.isEmpty()) {
+                System.out.println("Attachments:");
+                for (Map<String, Object> at : attachments)
+                    System.out.println("  - " + at.get("filename") + " (" + at.get("mimeType")
+                            + ", " + at.get("size") + " bytes" + (Boolean.TRUE.equals(at.get("inline")) ? ", inline" : "")
+                            + ")");
+            }
             System.out.println();
             System.out.println(body);
         }
     }
 
-    private static void cmdDraft(Args a) throws Exception {
+    /**
+     * Thrown by {@link #composeMessage} for a caller-fixable usage problem (missing {@code --to}).
+     * Caught by {@link #cmdDraft}/{@link #cmdDraftUpdate} so the exit-code/message convention stays in
+     * one place, and so {@link #composeMessage} itself never calls {@code System.exit} — which is what
+     * lets {@code DraftComposeSmokeTest} drive it directly with no live account.
+     */
+    private static final class DraftUsageError extends RuntimeException {
+        DraftUsageError(String message) { super(message); }
+    }
+
+    /** What {@link #composeMessage} builds: the ready-to-send {@link Message}, plus the counts {@code draft}
+     *  and {@code draft-update} both report back to the caller. */
+    static final class Composed {
+        Message message;
+        int inlineCount, attachCount;
+    }
+
+    /**
+     * Builds the {@link Message} (raw MIME + threadId) shared by {@code draft} (create) and
+     * {@code draft-update} (replace-in-place) — everything except the actual {@code drafts().create/
+     * update()} call. Free of any Gmail API call other than {@code --reply-to}'s lookup, and of
+     * {@code System.exit} — so {@code DraftComposeSmokeTest} can drive the validation path directly.
+     *
+     * @param existingThreadId the draft's current threadId when updating (null when creating fresh),
+     *                          carried forward unless {@code --thread} or {@code --reply-to} overrides
+     *                          it. Gmail's API requires threadId to be resupplied on every update or the
+     *                          draft silently detaches from its thread — see prp/09.
+     */
+    static Composed composeMessage(Args a, String existingThreadId) throws Exception {
         String email = a.get("email");
         String to = a.get("to");
         String cc = a.get("cc");
@@ -794,7 +871,7 @@ public class GmailCli {
         String subject = a.get("subject");
         boolean html = a.has("html");
         String replyTo = a.get("reply-to");
-        String threadId = a.get("thread");
+        String threadId = a.get("thread") != null ? a.get("thread") : existingThreadId;
 
         String body = resolveBody(a);
 
@@ -817,32 +894,81 @@ public class GmailCli {
         }
 
         if (to == null || to.isBlank()) {
-            logError("draft requires --to <recipients> (or --reply-to <messageId> to infer it)");
-            System.exit(2);
+            if (!a.has("no-to")) {
+                throw new DraftUsageError("requires --to <recipients> (or --reply-to <messageId> to infer "
+                        + "it, or --no-to/--placeholder-to to hold a placeholder draft with genuinely no "
+                        + "recipient)");
+            }
+            to = null; // deliberate: a draft Gmail will hold, but that Send refuses with no recipient — prp/09
         }
 
-        MimeMessage mime = buildMime(email, to, cc, bcc, subject, body, html, a.attachments, a.inlines, inReplyTo, references);
+        Composed c = new Composed();
+        c.inlineCount = a.inlines == null ? 0 : a.inlines.size();
+        c.attachCount = a.attachments == null ? 0 : a.attachments.size();
 
+        MimeMessage mime = buildMime(email, to, cc, bcc, subject, body, html, a.attachments, a.inlines, inReplyTo, references);
         ByteArrayOutputStream buffer = new ByteArrayOutputStream();
         mime.writeTo(buffer);
         String raw = Base64.encodeBase64URLSafeString(buffer.toByteArray());
 
-        Message message = new Message().setRaw(raw);
-        if (threadId != null && !threadId.isBlank()) message.setThreadId(threadId);
+        c.message = new Message().setRaw(raw);
+        if (threadId != null && !threadId.isBlank()) c.message.setThreadId(threadId);
+        return c;
+    }
 
-        Draft created = gmail.users().drafts().create(USER, new Draft().setMessage(message)).execute();
+    private static void cmdDraft(Args a) throws Exception {
+        Composed c;
+        try {
+            c = composeMessage(a, null);
+        } catch (DraftUsageError e) {
+            logError("draft " + e.getMessage());
+            System.exit(2);
+            return;
+        }
+        Draft created = gmail.users().drafts().create(USER, new Draft().setMessage(c.message)).execute();
+        printDraftResult("draft created", created, c);
+    }
+
+    /**
+     * Replaces an existing draft's content in place — same {@code draftId} before and after — instead of
+     * the {@code draft-delete} + {@code draft} round trip that used to be the only way to edit one. That
+     * round trip mints a new draftId every time (stale wherever the old one was recorded) and routes
+     * through the wallet's irreversible-tier delete approval for what is really just an edit. See prp/09.
+     */
+    private static void cmdDraftUpdate(Args a, String draftId) throws Exception {
+        Draft existing = gmail.users().drafts().get(USER, draftId).setFormat("minimal").execute();
+        String existingThreadId = existing.getMessage() != null ? existing.getMessage().getThreadId() : null;
+
+        Composed c;
+        try {
+            c = composeMessage(a, existingThreadId);
+        } catch (DraftUsageError e) {
+            logError("draft-update " + e.getMessage());
+            System.exit(2);
+            return;
+        }
+        Draft updated = gmail.users().drafts().update(USER, draftId, new Draft().setMessage(c.message)).execute();
+        printDraftResult("draft updated (draftId unchanged)", updated, c);
+    }
+
+    private static void printDraftResult(String verb, Draft result, Composed c) {
+        String messageId = result.getMessage() != null ? result.getMessage().getId() : null;
+        String threadId = result.getMessage() != null ? result.getMessage().getThreadId() : null;
 
         if (json) {
             Map<String, Object> out = new LinkedHashMap<>();
-            out.put("draftId", created.getId());
-            out.put("messageId", created.getMessage() != null ? created.getMessage().getId() : null);
+            out.put("draftId", result.getId());
+            out.put("messageId", messageId);
             out.put("threadId", threadId);
+            out.put("inlineImagesEmbedded", c.inlineCount);
+            out.put("attachmentsEmbedded", c.attachCount);
             emitJson(out);
         } else {
-            System.out.println("SUCCESS: draft created");
-            System.out.println("draftId:   " + created.getId());
-            if (created.getMessage() != null) System.out.println("messageId: " + created.getMessage().getId());
+            System.out.println("SUCCESS: " + verb);
+            System.out.println("draftId:   " + result.getId());
+            if (messageId != null) System.out.println("messageId: " + messageId);
             if (threadId != null) System.out.println("threadId:  " + threadId);
+            System.out.println("embedded:  " + c.inlineCount + " inline image(s), " + c.attachCount + " attachment(s)");
         }
     }
 
@@ -892,7 +1018,8 @@ public class GmailCli {
         return body != null ? body : "";
     }
 
-    private static MimeMessage buildMime(String from, String to, String cc, String bcc,
+    /** Package-private (not private) so {@code MimeStructureSmokeTest} can call it directly. */
+    static MimeMessage buildMime(String from, String to, String cc, String bcc,
                                          String subject, String body, boolean html,
                                          List<String> attachments, List<String> inlines,
                                          String inReplyTo, String references) throws Exception {
@@ -924,25 +1051,55 @@ public class GmailCli {
             return email;
         }
 
-        var htmlHolder = new MimeBodyPart();
-        if (hasInline) {
+        if (hasInline && !hasAttach) {
+            // --inline alone: proven-safe in every test (prp/08) — leave it exactly as it was.
             var related = new MimeMultipart("related");
             var htmlPart = new MimeBodyPart();
             htmlPart.setContent(body, contentType);
             related.addBodyPart(htmlPart);
             for (var path : inlines) related.addBodyPart(filePart(path, true));
-            if (!hasAttach) {
-                email.setContent(related);
-                return email;
-            }
-            htmlHolder.setContent(related);
-            htmlHolder.setHeader("Content-Type", related.getContentType());
-        } else {
-            htmlHolder.setContent(body, contentType);
+            email.setContent(related);
+            return email;
         }
 
+        if (!hasInline) {
+            // --attach alone: proven-safe, unrelated to prp/08 — leave it exactly as it was.
+            var htmlHolder = new MimeBodyPart();
+            htmlHolder.setContent(body, contentType);
+            var mixed = new MimeMultipart("mixed");
+            mixed.addBodyPart(htmlHolder);
+            for (var path : attachments) mixed.addBodyPart(filePart(path, false));
+            email.setContent(mixed);
+            return email;
+        }
+
+        // --inline AND --attach together: the one combination prp/08 found broken. This tool's previous
+        // cid:+separate-part recipe was verified structurally correct (and correct when sent directly via
+        // the API) in every variant tried — original, Content-Disposition swapped, an exact byte-for-byte
+        // replica of Gmail's own native draft shape, and flattened to remove nesting — yet Gmail's compose
+        // window still drops the inline image and corrupts the attachment merely by being opened, no Send
+        // required. The one thing that survived every test (direct send AND open-edit-save in Gmail's own
+        // compose UI) is embedding the image as a data: URI instead of a separate cid-referenced MIME
+        // part: Gmail's own send pipeline rewrites a data: URI into a proper native attachment on the way
+        // out (confirmed byte-identical against the source file), and its compose-window JS treats a
+        // data: URI exactly like a freshly pasted image — minting a real identity token immediately on
+        // open, rather than falling back to the positional addressing that breaks for a foreign draft's
+        // second attachment-bearing part. See prp/08 for the full investigation and every ruled-out
+        // alternative.
+        var htmlWithInline = body;
+        for (var path : inlines) {
+            var f = new java.io.File(path);
+            var name = f.getName();
+            var bytes = Files.readAllBytes(f.toPath());
+            var mime = java.net.URLConnection.guessContentTypeFromName(name);
+            if (mime == null) mime = "application/octet-stream";
+            var dataUri = "data:" + mime + ";base64," + java.util.Base64.getEncoder().encodeToString(bytes);
+            htmlWithInline = htmlWithInline.replace("cid:" + name, dataUri);
+        }
+        var htmlPart = new MimeBodyPart();
+        htmlPart.setContent(htmlWithInline, contentType);
         var mixed = new MimeMultipart("mixed");
-        mixed.addBodyPart(htmlHolder);
+        mixed.addBodyPart(htmlPart);
         for (var path : attachments) mixed.addBodyPart(filePart(path, false));
         email.setContent(mixed);
         return email;
@@ -968,17 +1125,77 @@ public class GmailCli {
         return part;
     }
 
-    private static String plainTextToHtml(String text) {
+    /** The reviewer's own {@code >>} note (GLOBAL_CLAUDE.md's inline-review convention, extended to mail —
+     *  prp/09). Text + a light background tint, so the note reads as a highlighted "chip" — easy to spot
+     *  and skip past — rather than merely colored text a skimming reader could still read past unnoticed. */
+    private static final String USER_NOTE_COLOR = "#1a73e8"; // Gmail's own link/action blue
+    private static final String USER_NOTE_BG = "#e8f0fe";    // Gmail's own light-blue chip background
+    /** Claude's {@code >> AI:} reply to it. Same chip treatment, in Gmail's own green. */
+    private static final String AI_NOTE_COLOR = "#188038"; // Gmail's own green (used for "sent"/read receipts)
+    private static final String AI_NOTE_BG = "#e6f4ea";    // Gmail's own light-green chip background
+
+    /**
+     * Auto-converts a plain-text body to minimal HTML, and — extending the {@code >>}/{@code >> AI:}
+     * inline-review convention (GLOBAL_CLAUDE.md) from files to mail — colors a threaded review so it
+     * reads the same way inside Gmail as it would in a text editor: a line opening {@code >>} is the
+     * human reviewer's note, one opening {@code >> AI:} is Claude's reply — each highlighted as a colored
+     * chip (text color + a light background tint), deliberately more than plain text color, so a reader
+     * can skip past the notes to the letter (or jump straight between them) at a glance. An indented line
+     * right after either is treated as its continuation (the "additional tab/indent" the file convention
+     * describes) and keeps the same chip. Only fires here, on the plain-text path; a body supplied with
+     * {@code --html} is the caller's own markup and is left untouched — see {@code buildMime}.
+     */
+    static String plainTextToHtml(String text) {
         if (text == null || text.isEmpty()) return "<p></p>";
-        String escaped = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
-        String[] paragraphs = escaped.split("\\n\\n+");
+        String[] paragraphs = text.split("\\n\\n+");
         StringBuilder sb = new StringBuilder();
         for (String para : paragraphs) {
             String trimmed = para.trim();
             if (trimmed.isEmpty()) continue;
-            sb.append("<p>").append(trimmed.replace("\n", "<br>")).append("</p>\n");
+            sb.append("<p>").append(renderNoteLines(trimmed)).append("</p>\n");
         }
         return sb.length() > 0 ? sb.toString() : "<p></p>";
+    }
+
+    /** Renders one paragraph's lines, joined by {@code <br>}, chip-highlighting {@code >>}/{@code >> AI:}
+     *  notes and their indented continuation lines per {@link #plainTextToHtml}'s javadoc. */
+    private static String renderNoteLines(String paragraph) {
+        String[] lines = paragraph.split("\\n");
+        StringBuilder out = new StringBuilder();
+        Boolean open = null; // null = no open note; else which speaker (true = AI) the open note belongs to
+        for (int i = 0; i < lines.length; i++) {
+            if (i > 0) out.append("<br>");
+            String line = lines[i];
+            String stripped = line.stripLeading();
+            if (stripped.startsWith(">>")) {
+                open = stripped.substring(2).stripLeading().regionMatches(true, 0, "AI:", 0, 3);
+                out.append(noteSpan(line, open));
+            } else if (open != null && line.length() > stripped.length()) {
+                out.append(noteSpan(line, open)); // indented continuation of the note above
+            } else {
+                open = null;
+                out.append(escapeHtml(line));
+            }
+        }
+        return out.toString();
+    }
+
+    /**
+     * A colored, background-highlighted "chip" around one note line — deliberately more than just a text
+     * color, so a reviewer's eye catches a note (and can skip past it to the real letter, or jump straight
+     * between notes) at a glance rather than having to read every line to notice it's a comment.
+     */
+    private static String noteSpan(String rawLine, boolean isAi) {
+        String textColor = isAi ? AI_NOTE_COLOR : USER_NOTE_COLOR;
+        String bgColor = isAi ? AI_NOTE_BG : USER_NOTE_BG;
+        String style = "color:" + textColor + ";background-color:" + bgColor
+                + ";padding:1px 5px;border-radius:3px;"
+                + (isAi ? "margin-left:1.5em;display:inline-block;" : "");
+        return "<span style=\"" + style + "\">" + escapeHtml(rawLine) + "</span>";
+    }
+
+    private static String escapeHtml(String s) {
+        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
 
     private static void addRecipients(MimeMessage email, jakarta.mail.Message.RecipientType type, String csv) throws Exception {
@@ -1049,6 +1266,9 @@ public class GmailCli {
             m.put("mimeType", part.getMimeType());
             m.put("attachmentId", body.getAttachmentId());
             m.put("size", body.getSize());
+            m.put("inline", header(part, "Content-ID") != null
+                    || (header(part, "Content-Disposition") != null
+                        && header(part, "Content-Disposition").toLowerCase().startsWith("inline")));
             out.add(m);
         }
         if (part.getParts() != null) for (MessagePart p : part.getParts()) collectAttachments(p, out);
@@ -1555,6 +1775,10 @@ public class GmailCli {
                   draft --to <a,b> [--cc ..] [--bcc ..] [-s <subject>]
                         (-b "<body>" | --body-file <path> | --body-stdin) [--html]
                         [--attach <file> ...] [--inline <img> ...] [--reply-to <messageId>] [--thread <threadId>]
+                        [--no-to | --placeholder-to]
+                  draft-update <draftId> ...            Same flags as draft; replaces its content in place
+                                          — the draftId stays the same, so nothing that recorded it (a
+                                          file, a review thread) goes stale, and no draft-delete round trip.
                   attachment <messageId> <attachmentId> [--out <path>]
 
                 Global flags:
@@ -1568,11 +1792,36 @@ public class GmailCli {
                   --inline <img>          Embed an image IN the html body. Reference it from your html
                                           as <img src="cid:FILENAME"> using the file's plain name, e.g.
                                           --inline shots/a.jpg  ->  <img src="cid:a.jpg">
-                                          Builds multipart/related (html first, then each image with a
-                                          bracketed Content-ID and inline disposition), nested inside
-                                          multipart/mixed when --attach is also given. Gmail renders
-                                          inline images only in that exact shape.
+                                          Alone, builds multipart/related (html + a bracketed-Content-ID
+                                          inline part) — verified correct against a real sent message.
+                                          Combined with --attach, embeds the image as a data: URI in the
+                                          html instead: every cid:+separate-part shape was found to break
+                                          when a human opens the draft in Gmail's own compose window (see
+                                          prp/08); the data: URI survives both a direct API send (Gmail's
+                                          own send pipeline converts it to a proper attachment) and being
+                                          opened/edited/saved there. Verified byte-identical against the
+                                          source file in both cases, and battle-tested since across several
+                                          real sends with no issues (prp/08 — the reminder to manually
+                                          reopen and check before sending has been retired as of 2026-09-14).
                   --attach <file>         An ordinary attachment, shown below the message.
+
+                Placeholder / no-recipient drafts (draft, draft-update):
+                  --no-to, --placeholder-to
+                                          Hold a draft with genuinely no recipient (no To/Cc/Bcc at all)
+                                          instead of erroring out or self-addressing. Gmail will save such
+                                          a draft but refuses to Send it without a real recipient, so it's
+                                          a safe way to hold one mid-review. Self-addressing (--to your own
+                                          address) still works exactly as before, if you'd rather do that.
+
+                Threaded review notes in a draft body (plain text only, not --html):
+                  A line opening ">>" is highlighted as the human reviewer's note; one opening ">> AI:" is
+                  highlighted as Claude's reply to it (and indented) — the same convention GLOBAL_CLAUDE.md
+                  uses for files, extended here so a draft under review reads the same way inside Gmail.
+                  Each is a colored chip (text color + a light background tint), not just colored text, so
+                  a reader can skip past the notes to the letter, or jump straight between them, at a
+                  glance. An indented line right after either is its continuation and keeps the same chip.
+                  This fires automatically when the plain-text body is auto-converted to html; a body
+                  supplied with --html is your own markup and is left untouched.
 
                 Gmail search examples (-q / search):
                   "from:alice@x.com is:unread"   "subject:invoice newer_than:7d"   "has:attachment label:work"

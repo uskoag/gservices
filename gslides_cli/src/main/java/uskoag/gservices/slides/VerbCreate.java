@@ -30,6 +30,7 @@ public final class VerbCreate {
         var plain = Args.text(a, "--text", "--text-file");
         var src = Args.val(a, "--src");
         var youtube = Args.val(a, "--youtube");
+        var drive = Args.val(a, "--drive");
         var deck = Deck.presId(Args.req(a, "<deck>"));
         var pageRef = Args.req(a, "<page>");
         Args.noneLeft(a, "create " + kind);
@@ -46,7 +47,9 @@ public final class VerbCreate {
             case "ellipse" -> CreateRequests.shape(id, pageId, box, "ELLIPSE", fill, alpha, outline, weight, rt);
             case "line" -> List.of(CreateRequests.line(id, pageId, box, "STRAIGHT"));
             case "image" -> List.of(CreateRequests.image(id, pageId, box, imageUrl(src)));
-            case "video" -> List.of(CreateRequests.video(id, pageId, box, require(youtube, "--youtube")));
+            case "video" -> List.of(drive != null
+                    ? CreateRequests.video(id, pageId, box, "DRIVE", drive)
+                    : CreateRequests.video(id, pageId, box, "YOUTUBE", require(youtube, "--youtube or --drive")));
             default -> { Out.die("create: unknown kind " + kind); yield List.<Request>of(); }
         });
         if (noOutline && id != null) reqs.add(CreateRequests.noOutline(id));

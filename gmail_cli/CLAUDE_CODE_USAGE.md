@@ -14,6 +14,12 @@ uskoag-gmailcli draft -e you@gmail.com --to bob@x.com -s "Subject" --body-file b
 uskoag-gmailcli draft -e you@gmail.com --to bob@x.com -s "Comparison" \
   --body-file body.html --html --inline ./a.jpg --inline ./b.jpg --attach ./report.pdf
 
+# Edit an existing draft in place — same draftId before and after, no delete+recreate
+uskoag-gmailcli draft-update <draftId> -e you@gmail.com --to bob@x.com -s "Subject" --body-file body.txt
+
+# Hold a draft mid-review with nobody able to accidentally send it (no To/Cc/Bcc at all)
+uskoag-gmailcli draft -e you@gmail.com --no-to -s "Draft" --body-file body.txt
+
 # Delete drafts (labelling the draft's MESSAGE as TRASH does NOT remove the draft)
 uskoag-gmailcli draft-delete <draftId> <draftId> -e you@gmail.com
 
@@ -59,17 +65,53 @@ Reference each image by its **plain file name**, prefixed `cid:`. The path is no
 </table>
 ```
 
-**Gmail renders inline images in exactly one MIME shape, and the tool builds it for you:**
-`multipart/mixed` → `multipart/related` (html first, then each image with a **bracketed** `Content-ID`
-and `Content-Disposition: inline`) → attachments. The trap, which fails silently with no error and no
-pictures, is that the wrapper body part of the nested `multipart/related` must **restate** its own
-`Content-Type`. Reference implementation: `GmailDocxSender.createEmail_gmailVersion` in
-`uskoag-reports/bulk_email_sender` — read it before changing MIME assembly.
+**`--inline` used ALONE builds `multipart/related`** (html first, then each image with a **bracketed**
+`Content-ID` and `Content-Disposition: inline`) — the one shape Gmail renders. **`--inline` combined with
+`--attach` builds something different**: the image is embedded as a `data:` URI directly in the html,
+not a separate MIME part. That's not a shortcut here, it's the fix for a real bug — see below.
 
-- ❌ **Do not use `data:` URIs** as a shortcut. Gmail does not render them for the recipient.
-- Resize images to the width you display (560–620px, 30–80KB each). They are base64-encoded into the request.
-- Two files with the same base name collide in the `cid:` namespace — rename first.
+- Resize images to the width you display (560–620px, 30–80KB each). They are base64-encoded either way.
+- Two files with the same base name collide in the `cid:` namespace (`--inline` alone) — rename first.
 - Email HTML means **inline styles and tables**. No CSS classes, no stylesheets, no flexbox.
+- **`--inline` + `--attach` together used to be broken**: Gmail's own compose window would drop the
+  inline image and mislabel the other attachment the moment a human opened the draft there and saved it
+  (Send not even required), in every MIME shape tried. Fixed by embedding the image as a `data:` URI
+  instead when both flags are given — Gmail's send pipeline converts it to a proper native attachment on
+  the way out, and its compose-window JS treats a `data:` URI like a freshly pasted image rather than
+  falling into the broken code path. Verified byte-identical against the source file, both sent directly
+  via the API and after a human opened/edited/saved the draft. Full investigation, including every MIME
+  shape that was tried and ruled out first: `prp/08-prp-inline-image-dropped-on-send-with-attachments.md`.
+
+## Editing a draft under review — `draft-update`, `--no-to`
+
+When a monk is reviewing a draft live in Gmail's own compose window (adding `>>` comments the way they
+would in a file), don't `draft-delete` + `draft` to push a revision — that mints a new `draftId` every
+time (stale wherever the old one was recorded) and routes through the wallet's irreversible-tier delete
+approval for what is really just an edit. Use `draft-update <draftId> ...` instead: same flags as
+`draft`, same `draftId` after. It keeps the draft's existing thread association automatically unless you
+pass `--thread`/`--reply-to`.
+
+If the draft needs to be held with **nobody able to accidentally send it** (mid-review, no real recipient
+decided yet), pass `--no-to` (alias `--placeholder-to`) instead of `--to`. Gmail saves a draft with no
+To/Cc/Bcc at all just fine, and refuses to Send it until a human fills one in — safer than the old
+workaround of self-addressing it, though that still works too if you'd rather do that.
+
+**Threaded review notes**: a plain-text body's `>>` lines are auto-highlighted as chips (colored text +
+a light background tint, not just colored text) for the human's note, and `>> AI:` lines the same way
+for Claude's reply (indented) — the same convention GLOBAL_CLAUDE.md uses for files, so a reader can
+skip past the notes to the letter, or jump between them, at a glance. Write the reply the same way you
+would in a file, then pass the whole body straight to `draft`/`draft-update`. This only fires on a
+plain-text body; `--html` bodies are your own markup.
+
+**Always follow an `>> AI:` reply with a blank `>>` line.** Confirmed live (prp/09, 2026-09-14): Gmail's
+own compose editor carries the *entire* preceding styled run forward onto whatever the human types next
+— so a reply typed directly under an AI note with nothing separating them inherits the AI's green. A
+bare `>>` line right after your reply renders as an empty blue chip; the human clicking into it to type
+an optional follow-up then starts in their own color instead of yours. Also worth knowing: Gmail flattens
+a chip's `padding`/`border-radius`/`margin-left`/`display:inline-block` down to just `color`+
+`background-color` the moment a human resaves the draft through its own compose UI — the full styling
+only looks pristine on a draft freshly pushed by this tool; `draft-update` restores it since it
+regenerates the whole body.
 
 ## Why `--json`
 
@@ -144,6 +186,9 @@ uskoag-gmailcli read <newMsgId> -e $EM --raw  2>/dev/null   # Content-ID / inlin
 - ❌ Don't try to remove a draft with `modify --add TRASH`. That labels the underlying **message** and the
   **draft record survives and keeps listing** — which is how superseded drafts end up sitting beside the
   ones meant to be sent. Use `draft-delete`.
+- ❌ Don't `draft-delete` + `draft` to revise a draft under review. That mints a new `draftId` (stale
+  wherever the old one was recorded) and hits the wallet's irreversible-tier delete approval for a mere
+  edit. Use `draft-update <draftId> ...` — same flags as `draft`, same `draftId` after.
 - ❌ Don't pass `-k`/`--app-key`. It no longer exists; the wallet holds the credentials.
 - ❌ Don't use `2>&1` (it merges logs into results). Use `2>/dev/null`.
 - ❌ Don't pass huge `-n` values — each result costs one extra metadata fetch. Keep it ≤ ~25.

@@ -1,0 +1,41 @@
+uskoag-gdocsmon - watch Google Docs comment threads and push them into a Claude Code session (PRP 09, proof of concept)
+
+LISTEN TO A DOCUMENT FROM A CLAUDE CODE SESSION (the normal way)
+  relay --doc <doc> [-e <account>] [--every 60] [--trigger mention|all]
+      Run it from the Claude Code session's Bash tool, IN THE BACKGROUND (run_in_background). It must be that
+      session's own child: Claude Code accepts messages into a session's inbox only from its own children.
+      It starts the tray daemon if needed, starts watching the doc, and asks to attach this session
+      (CLAUDE_CODE_SESSION_ID) to it. The owner approves the attachment in the tray, for 1-24 hours, in a mode:
+        ASK     each new comment pops up in the tray; approve (F5) and it is sent as ACT, a 5-minute timeout does nothing
+        AUTO    each owner comment is sent as ACT straight away; capped at 1 hour, then back to ASK
+        INFO    each comment is sent marked INFORMATION ONLY: the session must not edit, reply or act
+      The owner can switch mode at any time (F6 AUTO, F7 ASK, F11 INFO); the session is told each time.
+      Messages arrive in the session as ordinary peer messages starting "[gdocs-monitor ...".
+      One session per document: a second session asking for the same doc is refused.
+      An event counts as delivered only when it reached the session's inbox; a relay that dies loses nothing.
+      Before an ACT event is handed over, the daemon itself posts "AI(Claude): Working on this…" in the thread
+      (a few seconds); the event names that post, and Claude edits it into the answer (comment edit <doc> <postId>).
+      The relay exits when the attachment ends or is denied; that exit also tells the session.
+
+  notify "<text>" [--doc <doc>]
+      A tray notification plus a line in the monitor window's log: "done", "replied to X", a question.
+
+OTHER VERBS
+  watch <doc> [-e <account>] [--every 60] [--trigger mention|all]    poll a doc without any session attached
+  unwatch <doc>
+  status
+  stop
+
+WHO MAY INSTRUCT
+  Each post's role (owner / ai / other) comes from uskoag-gdocscli: with `uskoag-gdocscli identity set --owner ..
+  --ai ..` the author decides it and -e defaults to the AI account; without it the one account in -e is the owner
+  and signed AI(...) posts are the AI's. Only the OWNER instructs. An owner post fires when it names ai/claude or
+  the AI account, replies in a thread the AI posted in, or always with --trigger all. A post by anyone else fires on
+  the same or on tagging the owner, and ALWAYS waits for the owner's approval in the tray (except in INFO mode,
+  where it is passed on as information only).
+
+Everything that grants something - an attachment, a mode, an event - is only in the tray window. No verb here
+can approve anything, so a Claude session cannot approve its own work.
+
+The daemon exits by itself after 5 minutes with nothing watched, attached or pending.
+State: ~/uskoag/gservices/gdocs-monitor (daemon.port, monitor.log). In memory only.

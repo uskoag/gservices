@@ -60,6 +60,7 @@ final class MdInline {
         var lead = text.substring(0, at);
         var trail = text.substring(at + core.length());
         var s = r.getTextStyle();
+        core = core.replace("*", "\\*");
         var url = link(s);
         if (url != null) core = "[" + core + "](" + url + ")";
         if (s != null && on(s.getStrikethrough())) core = "~~" + core + "~~";

@@ -2,6 +2,8 @@ package uskoag.gservices.slides;
 
 import java.util.ArrayList;
 import java.util.List;
+import uskoag.gservices.comments.AiSign;
+import uskoag.gservices.comments.Identity;
 
 /**
  * uskoag-gslides -- Google Slides from the command line.
@@ -22,7 +24,11 @@ public class GSlidesCli {
         Out.quiet = Args.flag(a, "--quiet");
         Api.dryRun = Args.flag(a, "--dry-run", "--dry");
         var wantsHelp = Args.flag(a, "--help", "-h");
-        Auth.email = Args.val(a, "--email", "-e");
+        // -e wins; without it the AI account from identity.json (shared with uskoag-gdocscli), when one is set
+        Auth.email = Identity.acting(Args.val(a, "--email", "-e"));
+        Identity.reading = () -> Auth.email;
+        AiSign.name = Args.val(a, "--ai-name");
+        AiSign.off = Args.flag(a, "--no-ai-sign");
         // --key/-k is still consumed, and still ignored. There is no app-key any more; a script that
         // passes one should not die on an unrecognised flag, but neither should it be led to believe
         // the value did anything.
@@ -62,6 +68,12 @@ public class GSlidesCli {
                 case "background" -> VerbBackground.run(a);
                 case "imagebg" -> VerbImageBg.run(a);
                 case "fill" -> VerbFill.run(a);
+
+                case "comments" -> VerbComments.run(a);
+                case "comment" -> VerbComment.run(a);
+                case "identity" -> VerbIdentityShow.run(a);
+                case "suggestions", "accept", "reject" -> Out.die(verb + ": Google Slides has no suggested edits (no Suggesting mode in the editor, nothing in the API)."
+                        + " Propose a change as a comment instead: comment add <deck> --on <elem> --find \"<old>\" --text \"suggest: <new>\"");
 
                 default -> {
                     Out.error("unknown command: " + verb);

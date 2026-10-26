@@ -102,4 +102,37 @@
             </plugin>
         </plugins>
     </build>
+
+    <!-- The cmdtools launcher(s), built by jr-maven-plugin with the config baked in (replaces the .jrc):
+         mvn -Djrexe -Djr.installDir=<folder on PATH> package -->
+    <profiles>
+        <profile>
+            <id>jrexe</id>
+            <activation>
+                <property>
+                    <name>jrexe</name>
+                </property>
+            </activation>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>io.github.jarrunner</groupId>
+                        <artifactId>jr-maven-plugin</artifactId>
+                        <version>1.3.0</version>
+                        <executions>
+                            <execution>
+                                <id>uskoag-gcalendarcli</id>
+                                <goals><goal>exe</goal></goals>
+                                <configuration>
+                                    <name>uskoag-gcalendarcli</name>
+                                    <jar>C:\user\code\uskoag\gservices\gcalendar_cli\target\uskoag-gcalendarcli.jar</jar>
+                                    <jvmMode>dll</jvmMode>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

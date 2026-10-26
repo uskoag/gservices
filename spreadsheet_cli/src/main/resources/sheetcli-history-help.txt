@@ -1,0 +1,48 @@
+HISTORY, DIFF AND PROTECTION  (public OAuth APIs only, through the wallet)
+  history <id> [--who] [--since <t>] [--until <t>] [--by <who>] [--json]
+      Drive's saved versions, oldest first: #n, revision, time with zone, who saved it.
+      --who adds, per span between two saved versions, who edited inside it according to
+      Drive Activity, each with their edit count and first..last time, labelled
+        certain  one editor in the span        mixed    several; it cannot say who did what
+        inferred no Activity: the account that saved the version closing the span
+        unknown  Activity records nobody (it reports edits minutes late)
+      Anonymous editors (anyone-with-the-link access) are counted and named as such.
+      Activity names people by a Google person id; a name is given only when it can be
+      matched to a saved version (and says "matched by time"), else "person <id>".
+      Drive keeps FEW versions of a busy sheet, and its list can change between calls.
+
+  snapshot <id> [--label <x>] [--out <file>]       snapshot --list <id>
+      Saves every tab's values AND formulas now, to
+      ~/uskoag/gservices/spreadsheet_cli/snapshots/<id>/<UTC stamp>[-label].json.
+      Take one after a repair; `diff <id>` then says exactly what changed since.
+
+  diff <id> [--from <src>] [--to <src>] [--sheet <tab>] [--formulas] [--stat] [--json]
+       [--limit n] [--from-time <t>] [--no-who]
+      What changed. STRUCTURE first, because it is what breaks formulas: tabs added,
+      removed or renamed; columns and rows inserted or deleted ("2 columns inserted: now
+      columns C:D, before what was column C"); rows moved; header cells changed. Columns are
+      aligned on row-1 headers, rows on column A, so an insert is one line, not 4000 cells.
+      Then CELLS by tab, "E11 (was C10): old -> new", flagged <formula replaced by a typed
+      value>, <formula cleared>, <formula added>, <now an error>. --formulas also lists
+      formulas whose text changed (references rewritten by an insert show up here).
+      Then who edited in between (Drive Activity, labelled as above).
+      <src>:  current (default --to) | snapshot (default --from: the newest one)
+              | <snapshot file>.json | sheet:<id or url> (another spreadsheet)
+      An earlier Drive version (#n, a revision number, a time) is NOT readable yet: the
+      wallet does not front a spreadsheet revision export as a read. Route: in Sheets,
+      File > Version history > the version > Make a copy, then --from sheet:<copy id>
+      --from-time "<when that version was saved>" (so Activity can name who edited since).
+
+  protect <id> <tab> [<range>] [--editors a@x,b@y] [--warning-only] [--description "..."]
+          [--unprotected-ranges "B2:B,D2:D"] [--apply] [--json]
+      Protects a range, or the whole tab when no range is given. --unprotected-ranges (whole
+      tab only) leaves those ranges editable: lock a report tab except its tick boxes.
+      Editors = --editors + the account running this (-e is required) + the file's owners,
+      so it cannot lock out the people who must keep access. --warning-only lets anyone
+      edit after a prompt (takes no --editors).
+      DRY RUN unless --apply; after --apply it is read back: VERIFIED. Re-running the same
+      command never stacks a duplicate: a protection over the same tab+range is updated in
+      place (the dry run lists what differs), or left alone when it already matches.
+  protect --list <id> [--json]
+  protect --remove <id> <protectedRangeId> [--apply]
+      The wallet treats removing a protection as irreversible: it asks for the passphrase.

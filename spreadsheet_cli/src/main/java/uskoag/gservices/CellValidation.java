@@ -33,6 +33,11 @@ public class CellValidation {
         return new Request().setSetDataValidation(new SetDataValidationRequest().setRange(range).setRule(rule));
     }
 
+    public static Request buildCheckboxRequest(GridRange range) {
+        var rule = new DataValidationRule().setCondition(new BooleanCondition().setType("BOOLEAN")).setStrict(true).setShowCustomUi(true);
+        return new Request().setSetDataValidation(new SetDataValidationRequest().setRange(range).setRule(rule));
+    }
+
     public static Request buildClearRequest(GridRange range) {
         return new Request().setSetDataValidation(new SetDataValidationRequest().setRange(range));
     }

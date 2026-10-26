@@ -34,23 +34,80 @@ VERBS
 EDIT VERBS  (DRY RUN by default: they print what would change. Add --apply to commit.)
   Anchors are the OPENING TEXT of a paragraph, copied from `read` (** markers are ignored,
   curly/straight quotes and non-breaking spaces match each other). An anchor must match
-  exactly one paragraph in the tab, or the command stops and lists the candidates.
+  exactly one paragraph in the tab, or the command stops and lists the candidates, numbered:
+  --occurrence N (1-based) then picks one.
 
-  replace <doc> --tab <sel> --find "<exact text>" --with "<text>" [--in "<paragraph start>"] [--all]
+  replace <doc> --tab <sel> --find "<exact text>" --with "<text>" [--in "<paragraph start>" [--occurrence N]] [--all] [--literal]
       Fails if the text occurs 0 times; refuses more than once unless --in narrows it
-      or --all is given. Keeps the replaced text's formatting.
+      or --all is given. Keeps the replaced text's formatting. --with is PLAIN text: one holding
+      **, *word* or [text](url) is refused, because those characters would be written into the
+      document as they stand (use insert for styled text); --literal (plan "literal":true) says
+      the characters are meant. read --md writes a literal asterisk as \*, and insert --text
+      accepts \* the same way.
 
-  insert <doc> --tab <sel> --after "<paragraph start>" --text "<md>" [--text "<md>" ...] [--like "<paragraph start>"]
+  insert <doc> --tab <sel> --after "<paragraph start>" [--occurrence N] --text "<md>" [--text "<md>" ...] [--like "<paragraph start>"]
       New paragraph(s) right after the anchor. Without --like each inherits the anchor's
       style and list: after a bullet you get a bullet in the same list. --like copies
       another paragraph's style instead (heading-like line, a bullet from another list,
-      plain body text). --text accepts **bold** and *italic* only.
+      plain body text). --text accepts **bold**, *italic* and [text](url or tab:<sel>).
+      --style normal|heading1..heading6|title|subtitle instead of --like: that named style,
+      no list, and NOTHING inherited (no bold/italic/link from the anchor); markup in --text
+      still applies. In a plan: {"text":"...","style":"normal"}.
+      --list bullet forces a bulleted paragraph even when there is nothing to copy one
+      from — the only way to START a list; a default disc preset, or --like's own preset
+      if --like happens to already be a bullet. Consecutive new paragraphs so marked (same
+      --like, or none) become one list, not one each. In a plan: {"text":"...","list":"bullet"}.
+      Without --like it also inherits the ANCHOR's paragraph style, same as any insert with
+      neither --like nor --style — fine after a normal paragraph, a heading-styled bullet if
+      the anchor is a heading. The dry run flags this case; give --like a normal paragraph
+      if that is not what you want.
+      --spacing tight sets spaceAbove/spaceBelow to 0, on top of whatever --like/--style
+      set. In a plan: {"text":"...","spacing":"tight"} (combine freely with "list"/"like"/"style").
+      NESTED LISTS. --list bullet|number, --level N (0..8) and --preset <API preset name> make
+      the paragraph a list item at that nesting level; in a plan {"text":"...","list":"number",
+      "level":1,"preset":"NUMBERED_DECIMAL_ALPHA_ROMAN_PARENS"}. The consecutive list paragraphs of
+      one insert are made together as ONE list with levels (numbering continues after sub-points),
+      and a list made directly under a list of the same preset joins it. Numbers default to
+      NUMBERED_DECIMAL_ALPHA_ROMAN (1. a. i.), bullets to BULLET_DISC_CIRCLE_SQUARE. Docs has no
+      "(a)" preset: NUMBERED_DECIMAL_ALPHA_ROMAN_PARENS gives 1) a) i). A new list always counts
+      from 1. Markdown list syntax in --text / plan text (a paragraph with no like/style/list/level)
+      is read the same way: "- x", "1. x", indentation (tab or 2-4 spaces) for the level, and
+      "(a) x" / "a. x" / "(i) x" under a previous list item one level deeper. Worked example, a
+      numbered legal paragraph with (a)-(c): in a plan, paragraphs
+        {"text":"I call upon the BBC to:","list":"number","level":0},
+        {"text":"withdraw the film;","list":"number","level":1},
+        {"text":"publish a correction;","list":"number","level":1},
+        {"text":"apologise.","list":"number","level":1},
+        {"text":"The BBC shall preserve all records.","list":"number","level":0}
+      gives 1. / a. b. c. / 2. as one list (read back as nesting level, kind and membership).
 
-  delete <doc> --tab <sel> --from "<paragraph start>" [--to "<paragraph start>"]
-      Removes whole paragraphs, from..to inclusive (just --from for one). The dry run lists
-      every paragraph that goes. Reversible like any Docs edit (version history).
-      In a plan: {"op":"delete","tab":"Notes","from":"...","to":"..."}. A delete and a
-      re-insert can go in the same plan; they apply as one batch.
+  list <doc> --tab <sel> --from "<paragraph start>" [--to "<paragraph start>"]
+       (--bullet | --number | --preset <NAME> | --none) [--level N | --auto-level] [--keep-marker] [--apply]
+      Turns existing paragraphs, --from through --to inclusive, into ONE list (or --none takes them
+      out of their list). The typed marker of each ("(a) ", "a. ", "1. ", "- ", "â¢ ") is removed
+      unless --keep-marker. Level: --level N for all; --auto-level reads it from the typed markers
+      (1. = 0, (a) = 1, (i) = 2, bullets = 0); neither keeps each paragraph's current nesting level
+      (0 when it is not in a list). The whole run is re-listed together, a parent that is already a
+      list item included. Bold/italic of the text is kept. Typed numbers are dropped: a list counts
+      from 1, so start the range at the paragraph that is to be number 1. Empty paragraphs in the
+      range stop it. Dry run unless --apply; read back and VERIFIED (membership, level, kind).
+
+  delete <doc> --tab <sel> --from "<paragraph start>" [--occurrence N] [--to "<paragraph start>" [--to-occurrence N] | --to-end]
+      Removes everything from the --from paragraph through the --to paragraph inclusive (just --from
+      for one). --to is the first match AFTER --from. --to-end runs to the end of the tab, for a tail
+      whose last paragraphs are pictures with no text to anchor on. Between two paragraphs of the tab
+      body the range may hold WHOLE tables, pictures and page breaks: they go with it. A range that
+      starts or ends inside a table is refused; two paragraphs of one table cell delete as before.
+      The dry run states the count ("823 paragraph(s), 7 table(s) holding 278 paragraph(s), 30
+      picture(s), 3 page break(s)") and lists each paragraph and table (the first and last twenty
+      when there are more than forty). Reversible like any Docs edit (version history).
+      In a plan: {"op":"delete","tab":"Notes","from":"...","occurrence":2,"to":"...","toOccurrence":1}
+      or {"op":"delete","tab":"Notes","from":"...","toEnd":true}. A delete and a re-insert can go
+      in the same plan; they apply as one batch.
+      IDENTICAL PARAGRAPHS: an anchor that matches several paragraphs lists them as #1, #2 ... in
+      document order; --occurrence N (plan "occurrence", 1-based) picks one. It exists on delete
+      (the --from anchor), insert (--after) and replace (--in). A paragraph that really starts with
+      "*" or "**" is named as it is written, or with the markdown escapes "\*\*".
 
   apply <doc> --plan <edits.json>
       Many edits, one reviewed batch. JSON: {"edits":[ ... ]}, each edit one of
@@ -62,18 +119,105 @@ EDIT VERBS  (DRY RUN by default: they print what would change. Add --apply to co
       "skip": true keeps an edit in the plan without applying it. Several inserts after
       the same anchor keep plan order; put a heading and what follows it in ONE insert.
 
+  highlight <doc> --tab <sel> --find "<exact text>" [--in "<paragraph start>"] [--all] [--para] (--bg #RRGGBB | --color #RRGGBB)
+      Colours text already in the tab: background (--bg) and/or text colour (--color). --para colours the whole
+      paragraph each hit sits in. Dry run unless --apply.
+  align <doc> --tab <sel> (--para "<paragraph start>" [--occurrence N] | --image <objectId>) [--to "<paragraph start>" [--to-occurrence N] | --to-end]
+        (--center | --left | --right | --justify) [--keep-with-next] [--keep-lines-together] [--apply]
+      Paragraph alignment and page-flow over ONE paragraph, or the whole range from --para (or the paragraph holding
+      the picture --image) through --to (first match after it) or to the end of the tab. Tables in between are
+      covered, cell paragraphs included, and so are picture-only paragraphs. --keep-with-next keeps a paragraph on
+      the page of the one after it (a picture with its caption); --no-keep-with-next / --no-keep-lines-together turn
+      them off. Only the fields given are written. One updateParagraphStyle; read back: VERIFIED per paragraph or
+      each difference listed (exit 2). Dry run unless --apply. Example, the way a document's enclosure is centred:
+        align <doc> --tab t.x --para "Enclosure 4:" --to-end --center --keep-with-next --apply
+      The same on new text: insert --align center [--keep-with-next] [--keep-lines-together], and in a plan
+      {"text":"...","style":"normal","align":"center","keepWithNext":true,"keepLinesTogether":true}.
+      Anchor on a picture: insert --after-image <objectId> (ids from `images`), and in a plan "afterImage":"<objectId>"
+      in place of "after".
+  link <doc> --tab <sel> --find "<exact text>" [--in "<paragraph start>"] [--all]
+       (--url <url> | --to-tab <sel> | --to-heading "<heading start>" | --none)
+      Puts a hyperlink on text already in the tab, or removes it (--none). The text must
+      occur once in the tab (or in the --in paragraph); --all links every occurrence.
+      --to-tab makes a link to a tab of the SAME document (the API's own tab link, not a
+      URL). Only the link is written: bold, colour etc. stay. Read back: VERIFIED per span.
+      --to-heading links to a Heading paragraph of the SAME document (the API heading link, which a docx
+      export turns into a bookmark anchor, so it survives Doc -> email); the heading is named by its
+      paragraph start and must be a heading.
+
+  LINKS IN INSERTED TEXT: `insert --text`, plan "paragraphs" and `write --from` accept
+  [text](https://...), [text](tab:<sel>) for a tab of this document (<sel> as --tab),
+  [text](heading:<heading start>) for a heading of this document, and [text](#heading=<id>), which is how
+  `read` prints a heading link, so a read-edit-write round trip keeps them.
+  and [text](#tab=<tabId>), which is how `read` prints a tab link, so a read-edit-write
+  round trip keeps them. A "[" not followed by "](target)" stays literal text.
+
+  toc <doc> --tab <sel>                      list the native tables of contents (index, range, entries)
+  toc delete <doc> --tab <sel> [--index N] [--apply]
+      Deletes a native table of contents (one deleteContentRange), read back to confirm. Dry run unless
+      --apply. Plan op {"op":"toc-delete","tab":"..","index":N}. Replace it with ordinary short paragraphs
+      linked to their headings (--to-heading), when the overview must be shorter than the heading text.
+
   Edit options:
     --apply      commit. The whole batch is atomic and pinned to the revision just read:
                  if anyone edited the document since, NOTHING is applied and it says so.
     --requests   also print the exact batchUpdate JSON.
   The dry run shows, per inserted paragraph, the list it joins or starts and the style of
   each span (bold/italic, size, colour, font). After --apply the document is read back and
-  every inserted span is compared with the plan: VERIFIED, or VERIFY FAILED (exit 2) with
-  the differences. Font family is shown but not compared: Google stores a font equal to
+  every inserted span is compared with the plan, and every paragraph that should carry a
+  bullet (or should not) is checked too, with its nesting level and bullet/number kind: VERIFIED, or VERIFY FAILED (exit 2) with the
+  differences. Font family is shown but not compared: Google stores a font equal to
   the paragraph style's own as unset, so it can read back missing and still look identical.
   A replace whose text occurs once in the tab uses Google's replaceAllText; one that is
   only unique inside --in goes insert+restyle+delete. All Docs edits are ordinary edits to
   the wallet (reversible through version history).
+
+TAB VERBS  (DRY RUN by default, --apply to commit; one atomic batch pinned to the revision
+just read, then read back: each tab VERIFIED or VERIFY FAILED (exit 2). --json after --apply
+prints the resulting tabs; --requests prints the batchUpdate JSON.)
+  <sel> is what --tab accepts: a tab id, a 1-based position from `tabs`, or a title.
+  Positions (--index, and what is printed) are 1-based among the tab's siblings.
+
+  tab add <doc> --title "<t>" [--parent <sel>] [--after <sel> | --index <n>]
+  tab add <doc> --titles-file <file> [--parent <sel>] [--after <sel> | --index <n>]
+      Creates a tab, a CHILD tab when --parent is given; without --after/--index it goes
+      last. --titles-file takes one title per line (blank lines skipped) and creates them
+      all, in that order, in ONE batch. --after alone implies the anchor's own parent.
+      Prints each new tab id. A new tab is empty: fill it with `write --tab <id>`.
+  tab rename <doc> --tab <sel> --title "<t>"
+  tab move <doc> --tab <sel> [--parent <sel> | --top] [--after <sel> | --index <n>]
+      Re-parents and/or reorders a tab; its child tabs go with it. With no --parent/--top
+      it stays under its current parent.
+  Google nests tabs at most 3 levels deep (top, child, grandchild). Titles need not be
+  unique, but a duplicated title can no longer be used as <sel>: use the tab id.
+  tab delete <doc> --tab <sel> [--tab <sel> ...] [--with-children]
+      Deletes tabs (repeat --tab, or comma-separate). The dry run lists each with its title,
+      size and child-tab count. A tab with child tabs is refused unless --with-children,
+      because Google deletes the children with it; deleting every top-level tab is refused.
+      An ordinary edit to the wallet: the content stays in version history.
+
+FOOTNOTE VERBS  (DRY RUN by default, --apply to commit, then read back and VERIFIED or
+VERIFY FAILED (exit 2). There is no separate "endnote" in Google Docs — footnotes are the
+whole of it. <sel> for --footnote is the reading-order number `read` shows as [^n] (e.g.
+"3"), or the raw footnote id.)
+
+  footnote add <doc> --tab <sel> --find "<exact text>" [--in "<paragraph start>"] --text "<md>"
+      Creates a footnote whose reference goes right after --find (which must occur exactly
+      once in the tab, or once inside --in). --text is the new footnote's body, one
+      paragraph, with the same **bold**, *italic*, [text](url) markup accepted elsewhere.
+      NOT one atomic batch, unlike every other edit verb: Google only returns the new
+      footnote's id from creating it, so the reference is created in one batchUpdate and its
+      body written in a second, each pinned to the revision the previous call left. If the
+      second call fails the footnote already exists, empty — the error names its id and the
+      `footnote edit` command to retry with.
+
+  footnote edit <doc> --tab <sel> --footnote <sel> --text "<md>"
+      Replaces the WHOLE body of an existing footnote (one paragraph; a multi-paragraph
+      footnote body is not supported here) with --text. One atomic batch.
+
+  footnote delete <doc> --tab <sel> --footnote <sel>
+      Deletes the footnote's reference character in the tab body; Google removes the
+      footnote's own content with it. One atomic batch.
 
 OWNER AND AI ACCOUNT
   The AI can edit and comment from its OWN account, so Google's history and comment
@@ -168,23 +312,70 @@ NEW DOCUMENTS
       uskoag-gdrivecli new doc "<name>" --in "G:\Shared drives\<drive>\<folder>" -e <account>
   write <doc> --from <file.md> [--tab <sel>] [--apply]
       Fill an EMPTY tab from simple markdown: # to ###### headings (Heading 1-6), "- "
-      bullets, "1. " numbered items, paragraphs, **bold**, *italic*. Consecutive items
-      form one list. Refuses a tab that already has text. Dry run unless --apply.
+      bullets, "1. " numbered items, paragraphs, **bold**, *italic*. Nesting by indentation (a
+      tab, or 2-4 spaces); "(a)" / "a." / "(i)" items under a numbered item are its lettered and
+      roman sub-points. A plain paragraph ends the list; an indented non-list line continues the
+      item above it. Consecutive items, nested ones included, form ONE list, so numbering
+      continues after the sub-points. Refuses a tab that already has text. Dry run unless
+      --apply; after it the tab is read back and each paragraph's list level is VERIFIED.
+      read --md writes lists back the same way (4 spaces per level, the document's own
+      numbering: 1. a. i.), so read, edit, write round-trips.
+  import <doc> --from <file.docx | Google Doc id/url> [--tab <sel>] [--at-end | --after "<paragraph start>"]
+         [--keep-source] [--apply]
+      Replay a WHOLE Word document (or another Google Doc) into a tab of a live document, mechanically and
+      in order: nothing is selected or summarised. A .docx is uploaded to Drive with conversion to a Google Doc
+      (Google's own converter is the best docx reader there is), the converted copy is read, and every element is
+      written into the target: paragraphs with their styles, headings, runs (bold, italic, underline, colours,
+      HIGHLIGHT, sizes, fonts, links), lists with their nesting and ONE continuous numbering per source list,
+      tables (column widths, cell colours, borders, merged cells, tables nested in cells), inline pictures at
+      their size, page breaks, footnotes, and heading links (so a table of contents still jumps). The scratch
+      copy is trashed at the end (the wallet asks you to approve the trash); --keep-source keeps it and prints
+      its link. Into an empty tab no position flag is needed; into a tab with text say --at-end or --after.
+      The existing text, and its lists and numbering, are left alone: the import starts its own lists.
+      Dry run unless --apply: prints the counts (paragraphs, runs, tables, pictures, footnotes, page breaks) and
+      everything that will NOT be carried. After --apply the tab is read back and every paragraph's text, list
+      level, table and styled run is compared with the source (VERIFIED, or each difference listed, exit 2).
+      Not carried, and said so every time: the numbering GLYPHS Docs has no preset for (a level written "(1)" comes
+      out "a."), bookmarks, comments, anything Docs cannot hold. A failure names the stage it stopped in and
+      where the partial import sits.
 
 IMAGES
   images <doc> [--tab <sel>] [--json]
       Every inline image: object id, tab, index, size, the paragraph it sits in, and
       [suggested insertion] / [suggested deletion] when it is part of a pending suggestion.
-  image insert <doc> --tab <sel> --after "<paragraph start>" --image <file|https-url> [--width <inches>]
-      A new paragraph after the anchor holding the picture.
+  image insert <doc> --tab <sel> --after "<paragraph start>" --image <file|https-url>
+               [--width <inches>] [--height <inches>] [--left/--right/--top/--bottom <0..1>]
+      A new paragraph after the anchor holding the picture. Giving only one of
+      --width/--height keeps the picture's own aspect ratio for the other. The four crop
+      flags (fractions of the picture cut away from that edge before it goes in) can be
+      combined with either.
+  image insert ... [--after-image <objectId>] [--caption "<md>" [--caption-style italic-center|center]] [--align <v>] [--keep-with-next]
+      --after-image anchors on a picture instead of text. --caption puts the caption in a paragraph right under the
+      picture in ONE step: both paragraphs are reset to the normal style (no heading or list inherited from the
+      anchor) and centred, the caption is italic unless --caption-style center, and the picture paragraph is set
+      keep-with-next so the caption never lands apart from it at a page break. Read back: VERIFIED. Several
+      pictures: insert them in order, each --after-image the previous caption's picture or --after the previous caption.
   image replace <doc> <objectId> --image <file|https-url>
       Direct: Google's replaceImage, keeping the old size (centre-cropped).
       With --suggest: the new picture is inserted before the old one and the old one
       deleted, both in ONE suggestion (Google applies replaceImage directly even in suggest
       mode), so one accept swaps them and one reject keeps the old picture.
-  Both take --suggest, --note, --apply (dry run otherwise; a dry run uploads nothing).
-  A local file is uploaded to Drive, shared by link only for the insert (Docs fetches it
-  once and keeps its own copy), then trashed. The wallet recognises that upload as an image
+  image resize <doc> <objectId> --width <inches> and/or --height <inches>
+      Re-inserts the SAME picture (Google's own link for it) at the new size, then deletes
+      the old one — there is no request that resizes an image already in the document, so
+      the object gets a new id. Giving only one dimension keeps the picture's own aspect
+      ratio for the other.
+  image crop <doc> <objectId> --left/--right/--top/--bottom <0..1> [--width/--height <inches>]
+      Cuts the given fraction off each edge of the CURRENT picture (0.1 = 10%), locally,
+      and re-inserts the result in its place — Google has no request that crops an image
+      already in the document either, only CropProperties to read, never to set. Without
+      --width/--height the old display width is kept and the height follows the new shape;
+      the object gets a new id.
+  All four take --suggest, --note, --apply (dry run otherwise; a dry run downloads and
+  uploads nothing). A local file (or, for crop, a locally-cropped copy of the source) is
+  uploaded to Drive, shared by link only for the insert (Docs fetches it once and keeps its
+  own copy), then trashed. resize needs no upload at all — it reuses Google's own link for
+  the picture already in the document. The wallet recognises that upload as an image
   by its file signature, so the share and the trash need no passphrase. --keep-upload
   leaves it in Drive, still shared.
 
