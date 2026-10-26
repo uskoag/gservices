@@ -416,8 +416,14 @@ SUGGESTED EDITS, NOTES AND COMMENTS  (Google Docs API Developer Preview since 20
       edit/delete/unsign work only on posts this account wrote (Google's rule). A deleted
       comment is NOT in version history. `unsign` strips the AI signature in place.
 
-  accept|reject <doc> <suggestionId...> | --mine | --all [--apply]
-  delete-suggestion <doc> <suggestionId...> | --mine [--apply]     (author only)
+  suggestion accept|reject <doc> (<suggestionId...> | --mine | --all) [--tab <sel>] [--by <name>] [--apply]
+  suggestion delete <doc> (<suggestionId...> | --mine) [--apply]       (author only)
+      Also spelled accept|reject|delete-suggestion <doc> .... Ids are the suggest.xxx that
+      `suggestions <doc>` prints. --by keeps threads whose suggester's display name contains
+      <name> (case-insensitive; Google gives a name, not an email). One batch, Google's own
+      accept/reject (no emulation), then a read-back: every id must be gone from every tab,
+      else VERIFY FAILED and exit 2. In a plan: {"op":"suggestion-accept","suggestion":"suggest.xxx"}
+      (also -reject, -delete); these go first, in their own batch, then the plan's edits.
 
 GLOBAL OPTIONS
   -e, --email <account>   required; the wallet decides whether this account may read.

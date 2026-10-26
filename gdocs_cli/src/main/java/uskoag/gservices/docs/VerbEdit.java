@@ -29,7 +29,10 @@ public final class VerbEdit {
             default -> PlanFile.read(Optional.ofNullable(Args.val(a, "--plan")).orElseGet(() -> { Out.die("apply needs --plan <file.json>"); return null; }));
         };
         Args.noneLeft(a, verb);
-        if (edits.isEmpty()) Out.die("no edits to apply");
+        var sops = verb.equals("apply") ? List.copyOf(PlanFile.suggestionOps) : List.<PlanFile.SuggestionOp>of();
+        if (edits.isEmpty() && sops.isEmpty()) Out.die("no edits to apply");
+        if (!sops.isEmpty() && !SuggestionAct.plan(id, sops, apply)) System.exit(2);
+        if (edits.isEmpty()) return;
 
         DocRef.suggestions = "inline";
         var doc = DocRef.get(id);

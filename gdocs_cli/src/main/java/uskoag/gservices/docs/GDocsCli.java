@@ -49,6 +49,7 @@ public class GDocsCli {
                 case "images" -> VerbImage.list(a);
                 case "image" -> VerbImage.run(a);
                 case "accept", "reject", "delete-suggestion" -> VerbSuggestions.run(verb, a);
+                case "suggestion" -> VerbSuggestions.sub(a);
                 default -> {
                     Out.error("unknown command: " + verb);
                     help(System.err);

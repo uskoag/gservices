@@ -21,6 +21,11 @@ final class PlanFile {
     /** {"suggest": true, "edits": [...]} applies the whole plan as suggested edits (PRP 08). */
     static boolean suggest;
 
+    /** A suggestion-accept / -reject / -delete op of the plan; these are sent, and verified, before the edits. */
+    record SuggestionOp(String kind, String id, String label) {}
+
+    static final List<SuggestionOp> suggestionOps = new ArrayList<>();
+
     private PlanFile() {}
 
     static List<Edit> read(String file) throws Exception {
@@ -35,6 +40,7 @@ final class PlanFile {
             var label = str(o, "id", "#" + (i + 1));
             if (o.has("skip") && o.get("skip").getAsBoolean()) { Out.info(label + ": skipped"); continue; }
             var op = str(o, "op", "");
+            if (op.startsWith("suggestion-")) { suggestionOps.add(suggestionOp(o, label, op)); continue; }
             out.add(switch (op) {
                 case "replace" -> {
                     checkKeys(o, label, "id", "op", "skip", "tab", "note", "in", "occurrence", "find", "with", "all", "literal");
@@ -54,10 +60,20 @@ final class PlanFile {
                     checkKeys(o, label, "id", "op", "skip", "tab", "note", "index");
                     yield new Edit.TocDelete(label, str(o, "tab", null), num(o, "index"), str(o, "note", null));
                 }
-                default -> { Out.die(label + ": op must be replace, insert, delete or toc-delete, not '" + op + "'"); yield null; }
+                default -> { Out.die(label + ": op must be replace, insert, delete, toc-delete or suggestion-accept/-reject/-delete, not '" + op + "'"); yield null; }
             });
         }
         return out;
+    }
+
+    /** {"op":"suggestion-accept","suggestion":"suggest.x"}; "id" is taken as the suggestion when it is one (suggest.…). */
+    private static SuggestionOp suggestionOp(JsonObject o, String label, String op) {
+        checkKeys(o, label, "id", "op", "skip", "suggestion");
+        var kind = op.substring("suggestion-".length());
+        if (!List.of("accept", "reject", "delete").contains(kind)) Out.die(label + ": op must be suggestion-accept, suggestion-reject or suggestion-delete, not '" + op + "'");
+        var sid = str(o, "suggestion", label.startsWith("suggest.") ? label : null);
+        if (sid == null) Out.die(label + ": " + op + " needs \"suggestion\":\"suggest.…\" (the id `suggestions <doc>` prints)");
+        return new SuggestionOp(kind, sid, label);
     }
 
     private static List<Edit.NewPara> paras(String label, JsonArray a) {

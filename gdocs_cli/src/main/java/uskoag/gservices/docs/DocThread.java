@@ -70,7 +70,7 @@ record DocThread(String kind, String id, String status, String tabId, String tab
     }
 
     /** Every suggestion id that touches a paragraph: inserted or deleted text, a text-style or paragraph-style change, a bullet change. */
-    private static Set<String> suggestionIds(Para p) {
+    static Set<String> suggestionIds(Para p) {
         var ids = new LinkedHashSet<String>();
         var para = p.p();
         if (para.getSuggestedParagraphStyleChanges() != null) ids.addAll(para.getSuggestedParagraphStyleChanges().keySet());
