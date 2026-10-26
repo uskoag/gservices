@@ -128,8 +128,8 @@
                         <configuration>
                             <skip>${skip.aot.warmup}</skip>
                             <target>
-                                <!-- failonerror=false: build succeeds even if launcher not on PATH -->
-                                <exec executable="uskoag-gsheetscli.exe" failonerror="false" resultproperty="aot.warmup.result">
+                                <!-- failonerror=false: build succeeds even if launcher not on PATH; failifexecutionfails=false: also when it cannot start at all (no .exe on a Mac) -->
+                                <exec executable="uskoag-gsheetscli.exe" failonerror="false" failifexecutionfails="false" resultproperty="aot.warmup.result">
                                     <arg value="--help"/>
                                 </exec>
                                 <echo message="AOT warmup exit code: ${aot.warmup.result}"/>

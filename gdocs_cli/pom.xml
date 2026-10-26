@@ -156,7 +156,7 @@
                         <configuration>
                             <skip>${skip.aot.warmup}</skip>
                             <target>
-                                <exec executable="${cli.name}.exe" failonerror="false" resultproperty="aot.warmup.result">
+                                <exec executable="${cli.name}.exe" failonerror="false" failifexecutionfails="false" resultproperty="aot.warmup.result">
                                     <arg value="--help"/>
                                 </exec>
                                 <echo message="AOT warmup exit code: ${aot.warmup.result}"/>
