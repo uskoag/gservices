@@ -21,7 +21,8 @@ final class BuildInsert {
         if (ins.paras().isEmpty()) Out.die(ins.label() + ": nothing to insert (--text)");
         var anchor = s.anchor(ins.label() + " --after", ins.after(), ins.afterOcc());
         var segs = ins.paras().stream().map(np -> Segments.parse(np.text())).toList();
-        var tabs = ins.paras().stream().map(np -> np.level() == null ? 0 : np.level()).toList();
+        var deeper = Relist.deeper(ins, anchor, s.tab().getDocumentTab());
+        var tabs = ins.paras().stream().map(np -> deeper || np.level() == null ? 0 : np.level()).toList();
         var lines = new ArrayList<String>();
         for (var i = 0; i < segs.size(); i++) lines.add("\t".repeat(tabs.get(i)) + segs.get(i).plain());
         var at = anchor.end() - 1;
@@ -56,7 +57,7 @@ final class BuildInsert {
             var likeHasBullet = like.p().getBullet() != null;
             var wanted = named == null && (likeHasBullet || fresh);
             var kindMatches = np.list() == null || "number".equals(np.list()) == Styles.ordered(anchor.p(), dt);
-            var joins = inherited && wanted && likeHasBullet && np.level() == null && np.preset() == null && kindMatches
+            var joins = deeper || inherited && wanted && likeHasBullet && np.level() == null && np.preset() == null && kindMatches
                     && anchor.p().getBullet().getListId().equals(like.p().getBullet().getListId());
             var preset = wanted ? ListPresets.choose(np.list(), np.preset(), like, dt) : null;
             if (inherited && !joins) {
@@ -70,11 +71,11 @@ final class BuildInsert {
             if (np.fmt().any()) { paraStyles.add(np.fmt().request(range)); aligns.add(AlignCheck.Want.text(s.tabId(), sg.plain(), np.fmt())); }
             var ts = RunStyles.of(s, sg, start, named != null ? null : like);
             textStyles.addAll(ts);
-            var list = !wanted ? "no list" : joins ? "joins the anchor's list" : preset + " list, one list with the adjacent list paragraphs (joins a list of the same preset directly above)";
+            var list = !wanted ? "no list" : deeper ? "joins the anchor's list at level " + (np.level() == null ? Styles.level(anchor.p()) : np.level()) : joins ? "joins the anchor's list" : preset + " list, one list with the adjacent list paragraphs (joins a list of the same preset directly above)";
             report.add("  + [" + (wanted ? "bullet" : "paragraph") + (np.level() == null ? "" : ", level " + np.level()) + ", " + list
                     + (named != null ? ", style " + named : ", like \"" + like.preview() + "\"") + (np.spacing() != null ? ", spacing " + np.spacing() : "") + (np.fmt().any() ? ", " + np.fmt().describe() : "") + "] " + np.text());
             if (fresh && np.like() == null) warnHeading(report, anchor);
-            bulletExpects.add(new Expect.Bullet(s.tabId(), sg.plain(), wanted, wanted ? np.level() : null, wanted && fresh ? ListPresets.numbered(preset) : null));
+            bulletExpects.add(new Expect.Bullet(s.tabId(), sg.plain(), wanted, !wanted ? null : deeper && np.level() == null ? (Integer) Styles.level(anchor.p()) : np.level(), wanted && fresh && !deeper ? ListPresets.numbered(preset) : null));
             for (var t : ts) {
                 var r = t.getUpdateTextStyle().getRange();
                 report.add("      chars " + (r.getStartIndex() - start) + "-" + (r.getEndIndex() - start) + ": " + Expect.describe(t.getUpdateTextStyle().getTextStyle()));
@@ -86,6 +87,7 @@ final class BuildInsert {
         // Order matters: creating bullets and setting a named paragraph style both reset run styling,
         // so text styles go last or they are silently wiped (seen live, 2026-09-25).
         reqs.addAll(unbullet);
+        if (deeper) reqs.addAll(Relist.forInsert(ins, s, anchor, segs.stream().map(Segments::plain).toList(), report, bulletExpects));
         reqs.addAll(runs.requests(s.tabId()));
         reqs.addAll(paraStyles);
         reqs.addAll(textStyles);

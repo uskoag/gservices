@@ -18,6 +18,7 @@ final class VerbImport {
         var from = Args.val(a, "--from");
         var after = Args.val(a, "--after");
         var dump = Args.val(a, "--dump");
+        var fromTab = Args.val(a, "--from-tab");
         ImportSource.keep = Args.flag(a, "--keep-source");
         if (from == null) Out.die("import needs --from <file.docx | Google Doc id/url>");
         if (dump != null) {
@@ -37,10 +38,11 @@ final class VerbImport {
         if (after != null) new Scope(tab, Para.of(tab.getDocumentTab())).anchor("import --after", after);
 
         try (var src = ImportSource.open(from)) {
-            var srcTab = src.doc.getTabs().get(0).getDocumentTab();
+            if (fromTab != null) src.tab = Tabs.select(Tabs.flat(src.doc), fromTab).get(0);
+            var srcTab = src.tab.getDocumentTab();
             var plan = new ImportPlan(srcTab);
             plan.borders(src.tableBorders());
-            Out.data("import " + src.name + " into tab " + Tabs.title(tab) + (after != null ? " after \"" + after + "\"" : has ? " at the end" : " (empty tab)"));
+            Out.data("import " + src.name + (fromTab == null ? "" : " tab " + Tabs.title(src.tab)) + " into tab " + Tabs.title(tab) + (after != null ? " after \"" + after + "\"" : has ? " at the end" : " (empty tab)"));
             plan.summary().forEach(Out::data);
             if (!apply) { Out.data("DRY RUN — nothing written to the document. Re-run with --apply."); return; }
                 var diffs = Journal.around(id, "import", plan.all.size() + " paragraph(s), " + plan.tables.size() + " table(s) from " + src.name + " into tab " + Tabs.title(tab),

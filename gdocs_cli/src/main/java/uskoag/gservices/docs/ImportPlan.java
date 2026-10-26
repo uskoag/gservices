@@ -75,7 +75,7 @@ final class ImportPlan {
         var type = ps == null || ps.getNamedStyleType() == null ? "NORMAL_TEXT" : ps.getNamedStyleType();
         sp.style = eff.para(type, ps);
         if (ps != null && !toc) sp.headingId = ps.getHeadingId();
-        if (p.getBullet() != null) { sp.listId = p.getBullet().getListId(); sp.level = p.getBullet().getNestingLevel() == null ? 0 : p.getBullet().getNestingLevel(); }
+        if (p.getBullet() != null) { sp.listId = p.getBullet().getListId(); sp.level = p.getBullet().getNestingLevel() == null ? 0 : p.getBullet().getNestingLevel(); sp.mark = ImportLabel.style(src, p); }
         var sb = new StringBuilder();
         for (var e : p.getElements()) {
             if (e.getTextRun() != null) {

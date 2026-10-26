@@ -29,12 +29,14 @@ public final class VerbRead {
         var out = Args.val(a, "--out", "-o");
         var outDir = Args.val(a, "--out-dir");
         var comments = Args.flag(a, "--comments");
+        HtmlRender.flatLists = Args.flag(a, "--flat-lists");
         var id = DocRef.id(Args.req(a, "<doc>"));
         Args.noneLeft(a, "read");
         if (fmt.equals("docx")) { Docx.export(id, sel, out); return; }
         if (!Set.of("md", "html", "json").contains(fmt)) Out.die("--format must be md, html, json or docx");
 
         if (comments && !fmt.equals("md")) Out.die("--comments works with --format md");
+        if (HtmlRender.flatLists && !fmt.equals("html")) Out.die("--flat-lists works with --html");
         var doc = comments ? Preview.get(id) : DocRef.get(id);
         if (comments) { MdInline.showSuggestionIds = true; threads = DocThread.all(doc); }
         var all = Tabs.flat(doc);

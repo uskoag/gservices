@@ -16,6 +16,7 @@ public final class VerbTab {
     static void run(List<String> a) throws Exception {
         if (a.isEmpty()) Out.die("tab needs a sub-verb: add, rename, move or delete");
         var sub = a.remove(0).toLowerCase();
+        if (sub.equals("copy")) { TabCopy.run(a); return; }
         var apply = Args.flag(a, "--apply");
         var json = Args.flag(a, "--json");
         var showRequests = Args.flag(a, "--requests");

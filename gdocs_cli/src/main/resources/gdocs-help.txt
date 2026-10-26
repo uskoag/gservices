@@ -17,7 +17,14 @@ VERBS
                       links, nested lists, pipe tables, images, footnotes [^n].
       --format html   simple html: h1-h6, p, ul/ol, table, b/i/u/s/a, and a span
                       style for colour, highlight, size and font. One <section
-                      data-tab-id=...> per tab.
+                      data-tab-id=...> per tab. Lists number as the document
+                      does: a list interrupted by a plain paragraph reopens with
+                      <ol start=N>, each numbered <li> carries data-label="(3)"
+                      (the document's own label), and a list right under an
+                      item of another list is a list of its own.
+      --flat-lists    (with --html) every list item as a <p data-list-level=N>
+                      with its label typed in and the document's hanging indent:
+                      what an email client shows exactly as the page does.
       --format json   the Docs API's own structure, untouched (includeTabsContent).
       --format docx   Drive export of the whole document, every tab. Binary, so it
                       is written to --out, or to "<title>.docx" in the current dir.
@@ -195,6 +202,12 @@ prints the resulting tabs; --requests prints the batchUpdate JSON.)
       size and child-tab count. A tab with child tabs is refused unless --with-children,
       because Google deletes the children with it; deleting every top-level tab is refused.
       An ordinary edit to the wallet: the content stays in version history.
+  tab copy <doc> --tab <sel> --title "<title>" [--apply]
+      A styled duplicate of a tab, placed right after it (same parent). The API has no copy
+      request, so this is `tab add` then `import --from <doc> --from-tab <sel>`: paragraphs,
+      lists (label bold/size/colour included), tables, pictures and styles, read back and
+      VERIFIED. A list glyph no Docs preset has (e.g. "(1)") becomes the nearest preset's
+      ("a."), and the import says which list.
 
 FOOTNOTE VERBS  (DRY RUN by default, --apply to commit, then read back and VERIFIED or
 VERIFY FAILED (exit 2). There is no separate "endnote" in Google Docs — footnotes are the
@@ -320,10 +333,10 @@ NEW DOCUMENTS
       --apply; after it the tab is read back and each paragraph's list level is VERIFIED.
       read --md writes lists back the same way (4 spaces per level, the document's own
       numbering: 1. a. i.), so read, edit, write round-trips.
-  import <doc> --from <file.docx | Google Doc id/url> [--tab <sel>] [--at-end | --after "<paragraph start>"]
+  import <doc> --from <file.docx | Google Doc id/url> [--from-tab <sel>] [--tab <sel>] [--at-end | --after "<paragraph start>"]
          [--keep-source] [--apply]
       Replay a WHOLE Word document (or another Google Doc) into a tab of a live document, mechanically and
-      in order: nothing is selected or summarised. A .docx is uploaded to Drive with conversion to a Google Doc
+      in order: nothing is selected or summarised (--from-tab picks a tab of a Google Doc source, default its first). A .docx is uploaded to Drive with conversion to a Google Doc
       (Google's own converter is the best docx reader there is), the converted copy is read, and every element is
       written into the target: paragraphs with their styles, headings, runs (bold, italic, underline, colours,
       HIGHLIGHT, sizes, fonts, links), lists with their nesting and ONE continuous numbering per source list,

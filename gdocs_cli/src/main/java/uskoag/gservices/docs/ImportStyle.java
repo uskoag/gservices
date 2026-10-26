@@ -36,11 +36,35 @@ final class ImportStyle {
     private static void text(ImportPlan plan, ImportDest d, List<Para> dp, int i, List<Request> out) {
         var sp = plan.flat.get(i);
         var at = dp.get(i).start();
+        var end = dp.get(i).end();
         for (var r : sp.runs) {
             var st = r.style().clone();
             if (ImportLinks.toHeading(st)) st = Eff.without(st, "link");
             if (st.isEmpty()) continue;
             out.add(new Request().setUpdateTextStyle(new UpdateTextStyleRequest().setRange(d.range(at + r.from(), at + r.to())).setTextStyle(st).setFields(Eff.mask(st))));
+        }
+        var mark = sp.mark == null || !sp.listed() ? null : sp.mark;
+        if (mark != null && !mark.isEmpty() && end - at > 2) label(sp, d, at, end, mark, out);
+    }
+
+    /**
+     * A list label takes a text style only from a request over ALL of the paragraph's text, and only for the properties that
+     * request changes on its FIRST character (measured 2026-10-21). A preset list has no level style, so: clear the
+     * fields over the whole paragraph, set the label style over it, then give the text its own values back in pieces of
+     * which none covers all of it, the last character on its own.
+     */
+    private static void label(SrcPara sp, ImportDest d, int at, int end, TextStyle mark, List<Request> out) {
+        var fields = Eff.mask(mark);
+        out.add(new Request().setUpdateTextStyle(new UpdateTextStyleRequest().setRange(d.range(at, end)).setTextStyle(new TextStyle()).setFields(fields)));
+        out.add(new Request().setUpdateTextStyle(new UpdateTextStyleRequest().setRange(d.range(at, end)).setTextStyle(mark).setFields(fields)));
+        var cuts = new java.util.TreeSet<Integer>(List.of(0, end - 1 - at, end - 2 - at));
+        for (var r : sp.runs) { cuts.add(r.from()); cuts.add(r.to()); }
+        var pts = cuts.stream().filter(c -> c >= 0 && c <= end - 1 - at).toList();
+        for (var k = 0; k + 1 < pts.size(); k++) {
+            int from = pts.get(k), to = pts.get(k + 1);
+            var st = new TextStyle();
+            for (var r : sp.runs) if (r.from() <= from && to <= r.to()) mark.keySet().forEach(f -> { if (r.style().get(f) != null) st.set(f, r.style().get(f)); });
+            out.add(new Request().setUpdateTextStyle(new UpdateTextStyleRequest().setRange(d.range(at + from, at + to)).setTextStyle(st).setFields(fields)));
         }
     }
 

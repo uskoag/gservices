@@ -61,23 +61,11 @@ final class VerbList {
             plan.add(new Item(p, marker, none ? 0 : lvl, marker > 0 ? p.plain().substring(0, marker).strip() : null));
         }
 
-        var reqs = new ArrayList<Request>();
-        var from0 = first.start();
-        var to0 = last.end();
-        if (paras.stream().anyMatch(p -> p.p().getBullet() != null)) reqs.add(new Request().setDeleteParagraphBullets(new DeleteParagraphBulletsRequest().setRange(rng(tabId, from0, to0))));
-        if (none) for (var p : paras) { if (p.p().getBullet() != null) reqs.add(ListRuns.resetIndent(tabId, p.start(), p.end())); }
-        else reqs.add(ListRuns.resetIndent(tabId, from0, to0));
-        var delta = 0;
-        for (var i = plan.size() - 1; i >= 0; i--) {
-            var it = plan.get(i);
-            var at = it.p().start();
-            if (it.marker() > 0) reqs.add(new Request().setDeleteContentRange(new DeleteContentRangeRequest().setRange(rng(tabId, at, at + it.marker()))));
-            if (it.level() > 0) reqs.add(new Request().setInsertText(new InsertTextRequest().setText("\t".repeat(it.level())).setLocation(new Location().setIndex(at).setTabId(tabId))));
-            delta += it.level() - it.marker();
-        }
-        if (!none) reqs.add(new Request().setCreateParagraphBullets(new CreateParagraphBulletsRequest().setRange(rng(tabId, from0, to0 + delta)).setBulletPreset(chosen)));
-
         var expects = new ArrayList<Expect.Bullet>();
+        var ids = paras.stream().map(Relist::listId).distinct().toList();
+        var inList = !none && ids.size() == 1 && ids.get(0) != null;
+        var reqs = inList ? withinList(scope, ids.get(0), plan, preset, kind, chosen, expects) : ownRun(tabId, first.start(), last.end(), plan, none, chosen);
+
         for (var it : plan) {
             var text = it.p().plain().substring(it.marker());
             Out.data("  " + (none ? "no list" : "L" + it.level() + (it.typed() == null ? "" : ", typed \"" + it.typed() + "\" removed")) + ": " + text);
@@ -97,6 +85,54 @@ final class VerbList {
     }
 
     record Item(Para p, int marker, int level, String typed) {}
+
+    /** The range re-listed on its own (or taken out of its list): markers out, tabs in, one createParagraphBullets. */
+    private static ArrayList<Request> ownRun(String tabId, int from0, int to0, List<Item> plan, boolean none, String chosen) {
+        var reqs = new ArrayList<Request>();
+        if (plan.stream().anyMatch(it -> it.p().p().getBullet() != null)) reqs.add(new Request().setDeleteParagraphBullets(new DeleteParagraphBulletsRequest().setRange(rng(tabId, from0, to0))));
+        if (none) for (var it : plan) { if (it.p().p().getBullet() != null) reqs.add(ListRuns.resetIndent(tabId, it.p().start(), it.p().end())); }
+        else reqs.add(ListRuns.resetIndent(tabId, from0, to0));
+        var delta = 0;
+        for (var it : plan.reversed()) {
+            var at = it.p().start();
+            if (it.marker() > 0) reqs.add(new Request().setDeleteContentRange(new DeleteContentRangeRequest().setRange(rng(tabId, at, at + it.marker()))));
+            if (it.level() > 0) reqs.add(new Request().setInsertText(new InsertTextRequest().setText("\t".repeat(it.level())).setLocation(new Location().setIndex(at).setTabId(tabId))));
+            delta += it.level() - it.marker();
+        }
+        if (!none) reqs.add(new Request().setCreateParagraphBullets(new CreateParagraphBulletsRequest().setRange(rng(tabId, from0, to0 + delta)).setBulletPreset(chosen)));
+        return reqs;
+    }
+
+    /**
+     * The range lies inside one existing list: the whole list is bulleted again with the range's new levels (PRP 26),
+     * because a part re-listed on its own joins its neighbours at their level, or starts a list whose numbering restarts.
+     * Typed markers go first, so every later position is one with the markers already removed.
+     */
+    private static ArrayList<Request> withinList(Scope s, String id, List<Item> plan, String preset, String kind, String chosen, List<Expect.Bullet> expects) {
+        var tabId = s.tabId();
+        var reqs = new ArrayList<Request>();
+        for (var it : plan.reversed())
+            if (it.marker() > 0) reqs.add(new Request().setDeleteContentRange(new DeleteContentRangeRequest().setRange(rng(tabId, it.p().start(), it.p().start() + it.marker()))));
+        var items = new ArrayList<Relist.Item>();
+        var gone = 0;
+        Para first = null;
+        for (var p : Relist.span("list", s, id)) {
+            var it = plan.stream().filter(x -> x.p() == p).findFirst().orElse(null);
+            var cut = it == null ? 0 : it.marker();
+            var member = id.equals(Relist.listId(p));
+            items.add(new Relist.Item(p.start() - gone, p.end() - gone - cut, p.p(), it == null ? Styles.level(p.p()) : it.level(), member));
+            if (member && it == null) expects.add(new Expect.Bullet(tabId, p.plain(), true, Styles.level(p.p()), null));
+            if (member && first == null) first = p;
+            gone += cut;
+        }
+        var dt = s.tab().getDocumentTab();
+        var same = kind == null || "number".equals(kind) == Styles.ordered(first.p(), dt);
+        var use = preset != null ? preset : same ? ListPresets.choose(null, null, first, dt) : chosen;
+        Out.data("  the range is inside list " + id + ": the whole list (" + items.stream().filter(Relist.Item::member).count() + " items) is bulleted again as " + use
+                + (same && preset == null ? "" : ", which changes the kind or glyphs of the WHOLE list") + ", so levels can be set and numbering stays continuous");
+        reqs.addAll(Relist.requests(tabId, items, use));
+        return reqs;
+    }
 
     private static Range rng(String tabId, int from, int to) { return new Range().setTabId(tabId).setStartIndex(from).setEndIndex(to); }
 }

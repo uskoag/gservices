@@ -35,6 +35,21 @@ final class ListLabel {
         });
     }
 
+    /** The counter {@link #next} just gave this paragraph's level. */
+    int count(Paragraph p) { return counters.get(p.getBullet().getListId())[Styles.level(p)]; }
+
+    /** A bullet level's own symbol ("●", "○", "■"), or "•" when the list does not say. */
+    String symbol(Paragraph p) {
+        var nl = nesting(p);
+        return nl == null || nl.getGlyphSymbol() == null || nl.getGlyphSymbol().isEmpty() ? "•" : nl.getGlyphSymbol();
+    }
+
+    NestingLevel nesting(Paragraph p) {
+        var list = tab.getLists() == null ? null : tab.getLists().get(p.getBullet().getListId());
+        var lv = list == null || list.getListProperties() == null ? null : list.getListProperties().getNestingLevels();
+        return lv == null || lv.size() <= Styles.level(p) ? null : lv.get(Styles.level(p));
+    }
+
     static String format(int n, String type) {
         return switch (type == null ? "DECIMAL" : type) {
             case "ZERO_DECIMAL" -> n < 10 ? "0" + n : "" + n;

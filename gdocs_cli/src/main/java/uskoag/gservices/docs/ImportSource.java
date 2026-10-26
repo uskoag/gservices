@@ -1,7 +1,7 @@
 package uskoag.gservices.docs;
 
 import com.google.api.client.http.FileContent;
-import com.google.api.services.docs.v1.model.Document;
+import com.google.api.services.docs.v1.model.*;
 import com.google.api.services.drive.model.File;
 import java.nio.file.*;
 
@@ -17,10 +17,12 @@ final class ImportSource implements AutoCloseable {
     final String sourceId;
     final String name, convertedId;
     final Path docx;
+    Tab tab;
 
     private ImportSource(Document doc, String name, String convertedId, Path docx) {
         this.sourceId = convertedId != null ? convertedId : doc.getDocumentId();
         this.doc = doc; this.name = name; this.convertedId = convertedId; this.docx = docx;
+        this.tab = Tabs.flat(doc).get(0);
     }
 
     static ImportSource open(String from) throws Exception {
@@ -50,7 +52,10 @@ final class ImportSource implements AutoCloseable {
                     var out = new java.util.ArrayList<Boolean>();
                     var m = java.util.regex.Pattern.compile("<w:tbl>(.*?)</w:tblPr>", java.util.regex.Pattern.DOTALL).matcher(xml);
                     while (m.find()) out.add(m.group(1).contains("<w:tblBorders>") && m.group(1).contains("w:val=\"single\""));
-                    return out;
+                    var before = 0;
+                    for (var t : Tabs.flat(doc)) { if (Tabs.id(t).equals(Tabs.id(tab))) break; before += tables(t.getDocumentTab().getBody().getContent()); }
+                    var mine = tables(tab.getDocumentTab().getBody().getContent());
+                    return before + mine <= out.size() ? out.subList(before, before + mine) : out;
                 }
             }
         } catch (Exception ex) {
@@ -62,9 +67,17 @@ final class ImportSource implements AutoCloseable {
     /** Google's temporary links to the pictures live about 30 minutes, so they are fetched again just before they are used. */
     java.util.Map<String, String> pictureLinks() throws Exception {
         var out = new java.util.HashMap<String, String>();
-        var fresh = DocRef.get(sourceId).getTabs().get(0).getDocumentTab().getInlineObjects();
+        var fresh = Tabs.flat(DocRef.get(sourceId)).stream().filter(t -> Tabs.id(t).equals(Tabs.id(tab))).findFirst().orElseThrow().getDocumentTab().getInlineObjects();
         if (fresh != null) fresh.forEach((k, v) -> { var ip = v.getInlineObjectProperties().getEmbeddedObject().getImageProperties(); if (ip != null) out.put(k, ip.getContentUri()); });
         return out;
+    }
+
+    /** Tables in a body, nested ones included: the count the docx export lists them by. */
+    static int tables(java.util.List<StructuralElement> els) {
+        var n = 0;
+        for (var e : els == null ? java.util.List.<StructuralElement>of() : els)
+            if (e.getTable() != null) { n++; for (var r : e.getTable().getTableRows()) for (var c : r.getTableCells()) n += tables(c.getContent()); }
+        return n;
     }
 
     @Override public void close() {
