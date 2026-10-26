@@ -125,7 +125,7 @@
                                 <goals><goal>exe</goal></goals>
                                 <configuration>
                                     <name>uskoag-gcalendarcli</name>
-                                    <jar>C:\user\code\uskoag\gservices\gcalendar_cli\target\uskoag-gcalendarcli.jar</jar>
+                                    <jar>${project.build.directory}/uskoag-gcalendarcli.jar</jar>
                                     <jvmMode>dll</jvmMode>
                                 </configuration>
                             </execution>

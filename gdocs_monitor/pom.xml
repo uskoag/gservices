@@ -121,7 +121,7 @@
                                 <goals><goal>exe</goal></goals>
                                 <configuration>
                                     <name>uskoag-gdocsmon</name>
-                                    <jar>C:\user\code\uskoag\gservices\gdocs_monitor\target\uskoag-gdocsmon.jar</jar>
+                                    <jar>${project.build.directory}/uskoag-gdocsmon.jar</jar>
                                     <jvmMode>dll</jvmMode>
                                     <aot>true</aot>
                                     <vmArgs><vmArg>--enable-native-access=ALL-UNNAMED</vmArg><vmArg>-Dfile.encoding=UTF-8</vmArg></vmArgs>

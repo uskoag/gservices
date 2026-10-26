@@ -192,7 +192,7 @@
                                 <goals><goal>exe</goal></goals>
                                 <configuration>
                                     <name>uskoag-gslides</name>
-                                    <jar>C:\user\code\uskoag\gservices\gslides_cli\target\uskoag-gslides.jar</jar>
+                                    <jar>${project.build.directory}/uskoag-gslides.jar</jar>
                                     <jvmMode>dll</jvmMode>
                                     <aot>true</aot>
                                 </configuration>

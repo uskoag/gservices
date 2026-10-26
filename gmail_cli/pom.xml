@@ -143,7 +143,7 @@
                                 <goals><goal>exe</goal></goals>
                                 <configuration>
                                     <name>uskoag-gmailcli</name>
-                                    <jar>C:\user\code\uskoag\gservices\gmail_cli\target\uskoag-gmailcli.jar</jar>
+                                    <jar>${project.build.directory}/uskoag-gmailcli.jar</jar>
                                     <jvmMode>dll</jvmMode>
                                 </configuration>
                             </execution>

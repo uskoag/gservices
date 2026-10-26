@@ -168,7 +168,7 @@
                                 <goals><goal>exe</goal></goals>
                                 <configuration>
                                     <name>uskoag-gsheetscli</name>
-                                    <jar>C:\user\code\uskoag\gservices\spreadsheet_cli\target\uskoag-gsheetscli.jar</jar>
+                                    <jar>${project.build.directory}/uskoag-gsheetscli.jar</jar>
                                     <jvmMode>dll</jvmMode>
                                     <aot>true</aot>
                                 </configuration>
@@ -178,7 +178,7 @@
                                 <goals><goal>exe</goal></goals>
                                 <configuration>
                                     <name>uskoag-sheetcli</name>
-                                    <jar>C:\user\code\uskoag\gservices\spreadsheet_cli\target\uskoag-gsheetscli.jar</jar>
+                                    <jar>${project.build.directory}/uskoag-gsheetscli.jar</jar>
                                     <jvmMode>dll</jvmMode>
                                     <aot>true</aot>
                                 </configuration>

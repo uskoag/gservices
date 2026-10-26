@@ -190,7 +190,7 @@
                                 <goals><goal>exe</goal></goals>
                                 <configuration>
                                     <name>uskoag-gdocscli</name>
-                                    <jar>C:\user\code\uskoag\gservices\gdocs_cli\target\uskoag-gdocscli.jar</jar>
+                                    <jar>${project.build.directory}/uskoag-gdocscli.jar</jar>
                                     <jvmMode>dll</jvmMode>
                                     <aot>true</aot>
                                 </configuration>
